@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  # NewHTTPS API 服务（仅API模式）
+  newhttps-api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: newhttps-api
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - newhttps-data:/app/data
+      - newhttps-logs:/app/logs
+    environment:
+      - NODE_ENV=production
+      - JWT_SECRET=${JWT_SECRET:-newhttps-default-secret}
+      - API_PORT=3000
+    networks:
+      - newhttps-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  newhttps-network:
+    driver: bridge
+
+volumes:
+  newhttps-data:
+  newhttps-logs:

@@ -1,20 +1,6 @@
 version: '3.8'
 
 services:
-  # Certd-2 服务
-  certd:
-    image: registry.cn-shenzhen.aliyuncs.com/handsfree/certd:latest
-    container_name: certd
-    restart: unless-stopped
-    ports:
-      - "7001:7001"
-    volumes:
-      - ./data/certd:/app/data
-    environment:
-      - NODE_ENV=production
-    networks:
-      - newhttps-network
-
   # NewHTTPS API 服务
   newhttps-api:
     build:
@@ -25,14 +11,12 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - ./data/newhttps:/app/data
-      - ./logs:/app/logs
-      - ./api/.env:/app/.env:ro
+      - newhttps-data:/app/data
+      - newhttps-logs:/app/logs
     environment:
       - NODE_ENV=production
-      - CERTD_BASE_URL=http://certd:7001
-    depends_on:
-      - certd
+      - JWT_SECRET=${JWT_SECRET:-newhttps-default-secret}
+      - API_PORT=3000
     networks:
       - newhttps-network
     healthcheck:
@@ -42,7 +26,27 @@ services:
       retries: 3
       start_period: 40s
 
-  # Nginx 反向代理（可选）
+  # NewHTTPS Web 界面
+  newhttps-web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: newhttps-web
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      - newhttps-api
+    networks:
+      - newhttps-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # Nginx 反向代理
   nginx:
     image: nginx:alpine
     container_name: newhttps-nginx
@@ -52,11 +56,10 @@ services:
       - "443:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
       - ./ssl:/etc/nginx/ssl:ro
     depends_on:
       - newhttps-api
-      - certd
+      - newhttps-web
     networks:
       - newhttps-network
 
@@ -65,6 +68,5 @@ networks:
     driver: bridge
 
 volumes:
-  certd-data:
   newhttps-data:
   newhttps-logs:
