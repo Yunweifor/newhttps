@@ -43,12 +43,12 @@ router.get('/list', authMiddleware, async (req, res) => {
  * 根据域名获取证书信息
  * GET /api/v1/cert/domain/:domain
  */
-router.get('/domain/:domain', async (req, res): Promise<void> => {
+router.get('/domain/:domain', async (req, res): Promise<any> => {
   try {
     const { domain } = req.params;
     const certdClient = getCertdClient();
     const certificate = await certdClient.getCertificateByDomain(domain);
-    
+
     if (!certificate) {
       return res.status(404).json({
         success: false,
@@ -73,11 +73,11 @@ router.get('/domain/:domain', async (req, res): Promise<void> => {
  * 下载证书文件
  * GET /api/v1/cert/:certId/download
  */
-router.get('/:certId/download', async (req, res): Promise<void> => {
+router.get('/:certId/download', async (req, res): Promise<any> => {
   try {
     const { certId } = req.params;
     const { format = 'pem', agent_id } = req.query;
-    
+
     // 验证 agent_id
     if (!agent_id) {
       return res.status(400).json({
@@ -88,7 +88,7 @@ router.get('/:certId/download', async (req, res): Promise<void> => {
 
     const db = Database.getInstance();
     const agent = await db.getAgent(agent_id as string);
-    
+
     if (!agent) {
       return res.status(404).json({
         success: false,
@@ -98,7 +98,7 @@ router.get('/:certId/download', async (req, res): Promise<void> => {
 
     const certdClient = getCertdClient();
     const certBuffer = await certdClient.downloadCertificate(certId, format as any);
-    
+
     // 记录下载日志
     await db.logAgentActivity(agent_id as string, 'download', {
       certId,
@@ -111,7 +111,7 @@ router.get('/:certId/download', async (req, res): Promise<void> => {
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.setHeader('Content-Type', 'application/octet-stream');
     res.setHeader('Content-Length', certBuffer.length);
-    
+
     res.send(certBuffer);
   } catch (error) {
     logger.error(`Failed to download certificate ${req.params.certId}:`, error);
@@ -126,10 +126,10 @@ router.get('/:certId/download', async (req, res): Promise<void> => {
  * 检查证书更新
  * POST /api/v1/cert/check-updates
  */
-router.post('/check-updates', async (req, res): Promise<void> => {
+router.post('/check-updates', async (req, res): Promise<any> => {
   try {
     const { agent_id, certificates } = req.body;
-    
+
     if (!agent_id || !Array.isArray(certificates)) {
       return res.status(400).json({
         success: false,
@@ -139,7 +139,7 @@ router.post('/check-updates', async (req, res): Promise<void> => {
 
     const db = Database.getInstance();
     const agent = await db.getAgent(agent_id);
-    
+
     if (!agent) {
       return res.status(404).json({
         success: false,
@@ -152,7 +152,7 @@ router.post('/check-updates', async (req, res): Promise<void> => {
 
     for (const localCert of certificates) {
       const remoteCert = await certdClient.getCertificateByDomain(localCert.domain);
-      
+
       if (remoteCert && remoteCert.updatedAt > localCert.updatedAt) {
         updates.push({
           domain: localCert.domain,
@@ -187,11 +187,11 @@ router.post('/check-updates', async (req, res): Promise<void> => {
  * 获取证书详细信息（包含文件内容）
  * GET /api/v1/cert/:certId/details
  */
-router.get('/:certId/details', async (req, res): Promise<void> => {
+router.get('/:certId/details', async (req, res): Promise<any> => {
   try {
     const { certId } = req.params;
     const { agent_id } = req.query;
-    
+
     if (!agent_id) {
       return res.status(400).json({
         success: false,
@@ -201,7 +201,7 @@ router.get('/:certId/details', async (req, res): Promise<void> => {
 
     const db = Database.getInstance();
     const agent = await db.getAgent(agent_id as string);
-    
+
     if (!agent) {
       return res.status(404).json({
         success: false,
@@ -212,7 +212,7 @@ router.get('/:certId/details', async (req, res): Promise<void> => {
     const certdClient = getCertdClient();
     const certificates = await certdClient.getCertificates();
     const certificate = certificates.find(cert => cert.id === certId);
-    
+
     if (!certificate) {
       return res.status(404).json({
         success: false,

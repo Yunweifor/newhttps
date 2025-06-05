@@ -91,8 +91,8 @@
               
               <!-- 主题切换 -->
               <a-button type="text" @click="toggleTheme">
-                <SunOutlined v-if="isDark" />
-                <MoonOutlined v-else />
+                <BulbOutlined v-if="isDark" />
+                <EyeOutlined v-else />
               </a-button>
               
               <!-- 用户菜单 -->
@@ -175,8 +175,8 @@ import {
   MenuUnfoldOutlined,
   MenuFoldOutlined,
   BellOutlined,
-  SunOutlined,
-  MoonOutlined,
+  BulbOutlined,
+  EyeOutlined,
   UserOutlined,
   DownOutlined,
   LockOutlined,
