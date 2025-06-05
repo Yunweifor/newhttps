@@ -179,6 +179,8 @@ install_web() {
     if [ ! -d "$SCRIPT_DIR/web" ]; then
         log_warn "Web 目录不存在，跳过 Web 界面安装"
         log_info "您可以稍后手动安装 Web 界面或使用 API 直接管理"
+        # 设置标志表示Web未安装
+        WEB_INSTALLED=false
         return 0
     fi
 
@@ -233,6 +235,8 @@ EOF
     log_info "构建 Web 项目..."
     sudo -u "$SERVICE_USER" bash -lc 'npm run build'
 
+    # 设置标志表示Web已安装
+    WEB_INSTALLED=true
     log_success "Web 界面安装完成"
 }
 
@@ -324,7 +328,7 @@ WantedBy=multi-user.target
 EOF
 
     # 检查是否需要创建 Web 服务
-    if [ -f "$INSTALL_DIR/web/package.json" ]; then
+    if [ "$WEB_INSTALLED" = "true" ] && [ -f "$INSTALL_DIR/web/package.json" ]; then
         # 完整的 Web 应用服务
         cat > /etc/systemd/system/newhttps-web.service << EOF
 [Unit]
@@ -350,7 +354,7 @@ ProtectHome=true
 [Install]
 WantedBy=multi-user.target
 EOF
-    else
+    elif [ "$WEB_INSTALLED" = "true" ]; then
         # 简单的静态文件服务
         cat > /etc/systemd/system/newhttps-web.service << EOF
 [Unit]
@@ -386,19 +390,22 @@ EOF
 # 启动服务
 start_services() {
     log_info "启动服务..."
-    
-    # 启用并启动服务
-    systemctl enable newhttps-api newhttps-web
+
+    # 启用并启动 API 服务
+    systemctl enable newhttps-api
     systemctl start newhttps-api
-    
+
     # 等待 API 启动
     sleep 5
-    
-    systemctl start newhttps-web
-    
-    # 等待服务启动
-    sleep 10
-    
+
+    # 只有在Web安装成功时才启动Web服务
+    if [ "$WEB_INSTALLED" = "true" ]; then
+        systemctl enable newhttps-web
+        systemctl start newhttps-web
+        # 等待服务启动
+        sleep 10
+    fi
+
     log_success "服务启动完成"
 }
 
@@ -414,11 +421,15 @@ verify_installation() {
         systemctl status newhttps-api
     fi
     
-    if systemctl is-active --quiet newhttps-web; then
-        log_success "NewHTTPS Web 服务运行正常"
+    if [ "$WEB_INSTALLED" = "true" ]; then
+        if systemctl is-active --quiet newhttps-web; then
+            log_success "NewHTTPS Web 服务运行正常"
+        else
+            log_error "NewHTTPS Web 服务启动失败"
+            systemctl status newhttps-web
+        fi
     else
-        log_error "NewHTTPS Web 服务启动失败"
-        systemctl status newhttps-web
+        log_info "Web 服务未安装，跳过检查"
     fi
     
     # 检查 API 健康状态
@@ -436,7 +447,9 @@ show_results() {
     log_success "NewHTTPS 独立安装完成！"
     echo
     echo "访问地址："
-    echo "  - NewHTTPS Web 界面: http://localhost:$WEB_PORT"
+    if [ "$WEB_INSTALLED" = "true" ]; then
+        echo "  - NewHTTPS Web 界面: http://localhost:$WEB_PORT"
+    fi
     echo "  - NewHTTPS API: http://localhost:$API_PORT"
     echo "  - API 健康检查: http://localhost:$API_PORT/health"
     echo
@@ -447,11 +460,17 @@ show_results() {
     echo
     echo "系统服务："
     echo "  - API 服务: systemctl status newhttps-api"
-    echo "  - Web 服务: systemctl status newhttps-web"
+    if [ "$WEB_INSTALLED" = "true" ]; then
+        echo "  - Web 服务: systemctl status newhttps-web"
+    fi
     echo "  - 查看日志: journalctl -u newhttps-api -f"
     echo
     echo "下一步："
-    echo "  1. 访问 NewHTTPS Web 界面进行初始化设置"
+    if [ "$WEB_INSTALLED" = "true" ]; then
+        echo "  1. 访问 NewHTTPS Web 界面进行初始化设置"
+    else
+        echo "  1. 手动安装 Web 界面或直接使用 API 进行管理"
+    fi
     echo "  2. 配置 CA 机构信息（Let's Encrypt、ZeroSSL 等）"
     echo "  3. 在目标服务器上安装 NewHTTPS Agent："
     echo "     wget https://raw.githubusercontent.com/your-repo/newhttps/main/agent/newhttps-agent.sh"
@@ -479,6 +498,9 @@ main() {
     echo "    NewHTTPS 独立安装脚本"
     echo "========================================"
     echo
+
+    # 初始化变量
+    WEB_INSTALLED=false
 
     # 设置错误处理
     set -e
