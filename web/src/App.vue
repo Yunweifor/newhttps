@@ -11,9 +11,7 @@
           class="app-sider"
         >
           <div class="logo">
-            <img src="/logo.svg" alt="NewHTTPS" v-if="!collapsed" />
-            <img src="/logo-mini.svg" alt="N" v-else />
-            <span v-if="!collapsed">NewHTTPS</span>
+            <span>{{ collapsed ? 'N' : 'NewHTTPS' }}</span>
           </div>
           
           <a-menu
@@ -99,7 +97,7 @@
               <a-dropdown>
                 <a-button type="text" class="user-button">
                   <UserOutlined />
-                  <span>{{ userInfo.name || 'Admin' }}</span>
+                  <span>{{ userStore.userName }}</span>
                   <DownOutlined />
                 </a-button>
                 <template #overlay>
@@ -195,8 +193,7 @@ const openKeys = ref<string[]>([])
 const notificationDrawerVisible = ref(false)
 
 // 计算属性
-const isDark = computed(() => appStore.isDarkMode)
-const userInfo = computed(() => userStore.userInfo)
+const isDark = computed(() => appStore.isDark)
 const notificationCount = computed(() => appStore.notificationCount)
 
 const breadcrumbs = computed(() => {
