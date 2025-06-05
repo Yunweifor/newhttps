@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  # Certd-2 服务
+  certd:
+    image: registry.cn-shenzhen.aliyuncs.com/handsfree/certd:latest
+    container_name: certd
+    restart: unless-stopped
+    ports:
+      - "7001:7001"
+    volumes:
+      - ./data/certd:/app/data
+    environment:
+      - NODE_ENV=production
+    networks:
+      - newhttps-network
+
+  # NewHTTPS API 服务
+  newhttps-api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: newhttps-api
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data/newhttps:/app/data
+      - ./logs:/app/logs
+      - ./api/.env:/app/.env:ro
+    environment:
+      - NODE_ENV=production
+      - CERTD_BASE_URL=http://certd:7001
+    depends_on:
+      - certd
+    networks:
+      - newhttps-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Nginx 反向代理（可选）
+  nginx:
+    image: nginx:alpine
+    container_name: newhttps-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - newhttps-api
+      - certd
+    networks:
+      - newhttps-network
+
+networks:
+  newhttps-network:
+    driver: bridge
+
+volumes:
+  certd-data:
+  newhttps-data:
+  newhttps-logs:
