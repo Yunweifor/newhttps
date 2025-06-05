@@ -117,6 +117,9 @@ import {
   ClockCircleOutlined,
   DeploymentUnitOutlined
 } from '@ant-design/icons-vue'
+import { getCertificates } from '../api/certificate'
+import { getAgentStats } from '../api/agent'
+import { getDeploymentStats } from '../api/deployment'
 
 // 响应式数据
 const loading = ref(false)
@@ -155,13 +158,26 @@ const recentActivities = ref([
 const loadStats = async () => {
   loading.value = true
   try {
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    // 并行加载所有统计数据
+    const [certsResponse, agentStatsResponse, deploymentStatsResponse] = await Promise.all([
+      getCertificates().catch(() => ({ data: [], total: 0 })),
+      getAgentStats().catch(() => ({ data: { total: 0, active: 0 } })),
+      getDeploymentStats().catch(() => ({ data: { total: 0 } }))
+    ])
+
+    // 计算即将过期的证书数量
+    const now = new Date()
+    const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
+    const expiringSoon = certsResponse.data.filter(cert => {
+      const expiresAt = new Date(cert.expiresAt)
+      return expiresAt <= thirtyDaysFromNow && expiresAt > now
+    }).length
+
     stats.value = {
-      totalCerts: 42,
-      activeAgents: 8,
-      expiringSoon: 3,
-      deploymentTasks: 12
+      totalCerts: certsResponse.total,
+      activeAgents: agentStatsResponse.data.active,
+      expiringSoon,
+      deploymentTasks: deploymentStatsResponse.data.total
     }
   } catch (error) {
     console.error('Failed to load stats:', error)

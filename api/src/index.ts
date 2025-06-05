@@ -11,6 +11,7 @@ import { authMiddleware } from './middleware/auth';
 import { certRoutes } from './routes/cert';
 import { agentRoutes } from './routes/agent';
 import { configRoutes } from './routes/config';
+import { deploymentRoutes } from './routes/deployment';
 import { Database } from './services/database';
 import { logger } from './utils/logger';
 
@@ -43,6 +44,7 @@ app.get('/health', (req, res) => {
 // API 路由
 app.use('/api/v1/cert', certRoutes);
 app.use('/api/v1/agent', agentRoutes);
+app.use('/api/v1/deployment', deploymentRoutes);
 app.use('/api/v1/config', authMiddleware, configRoutes);
 
 // 错误处理

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { CertdClient } from '../services/certdClient';
+import { CertificateManager, CertificateCreateRequest } from '../services/certificateManager';
 import { Database } from '../services/database';
 import { logger } from '../utils/logger';
 import { authMiddleware } from '../middleware/auth';
@@ -14,6 +15,12 @@ function getCertdClient(): CertdClient {
     timeout: 30000
   };
   return new CertdClient(config);
+}
+
+// 获取证书管理器实例
+function getCertificateManager(): CertificateManager {
+  const dataDir = process.env.DATA_DIR || './data';
+  return new CertificateManager(dataDir);
 }
 
 /**
@@ -35,6 +42,63 @@ router.get('/list', authMiddleware, async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to fetch certificates'
+    });
+  }
+});
+
+/**
+ * 申请新证书
+ * POST /api/v1/cert/create
+ */
+router.post('/create', authMiddleware, async (req, res) => {
+  try {
+    const { domains, ca, email, challengeType, autoRenew, renewDays } = req.body;
+
+    // 验证必需参数
+    if (!domains || !Array.isArray(domains) || domains.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'domains is required and must be a non-empty array'
+      });
+    }
+
+    if (!ca) {
+      return res.status(400).json({
+        success: false,
+        error: 'ca is required'
+      });
+    }
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        error: 'email is required'
+      });
+    }
+
+    const certificateManager = getCertificateManager();
+    await certificateManager.initialize();
+
+    const createRequest: CertificateCreateRequest = {
+      domains,
+      ca,
+      email,
+      challengeType: challengeType || 'http-01',
+      autoRenew: autoRenew !== false,
+      renewDays: renewDays || 30
+    };
+
+    const certificate = await certificateManager.createCertificate(createRequest);
+
+    res.json({
+      success: true,
+      data: certificate
+    });
+  } catch (error) {
+    logger.error('Failed to create certificate:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to create certificate'
     });
   }
 });
@@ -229,6 +293,72 @@ router.get('/:certId/details', async (req, res): Promise<any> => {
     res.status(500).json({
       success: false,
       error: 'Failed to fetch certificate details'
+    });
+  }
+});
+
+/**
+ * 续期证书
+ * POST /api/v1/cert/:certId/renew
+ */
+router.post('/:certId/renew', authMiddleware, async (req, res) => {
+  try {
+    const { certId } = req.params;
+
+    if (!certId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Certificate ID is required'
+      });
+    }
+
+    const certificateManager = getCertificateManager();
+    await certificateManager.initialize();
+
+    const certificate = await certificateManager.renewCertificate(certId);
+
+    res.json({
+      success: true,
+      data: certificate
+    });
+  } catch (error) {
+    logger.error(`Failed to renew certificate ${req.params.certId}:`, error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to renew certificate'
+    });
+  }
+});
+
+/**
+ * 删除证书
+ * DELETE /api/v1/cert/:certId
+ */
+router.delete('/:certId', authMiddleware, async (req, res) => {
+  try {
+    const { certId } = req.params;
+
+    if (!certId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Certificate ID is required'
+      });
+    }
+
+    const certificateManager = getCertificateManager();
+    await certificateManager.initialize();
+
+    await certificateManager.deleteCertificate(certId);
+
+    res.json({
+      success: true,
+      message: 'Certificate deleted successfully'
+    });
+  } catch (error) {
+    logger.error(`Failed to delete certificate ${req.params.certId}:`, error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to delete certificate'
     });
   }
 });
