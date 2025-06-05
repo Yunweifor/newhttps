@@ -81,7 +81,7 @@ import dayjs from 'dayjs'
 // 响应式数据
 const loading = ref(false)
 const showAddModal = ref(false)
-const certificates = ref([])
+const certificates = ref<any[]>([])
 const pagination = ref({
   current: 1,
   pageSize: 10,
