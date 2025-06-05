@@ -1,332 +1,292 @@
 # NewHTTPS 故障排除指南
 
-本文档提供常见问题的解决方案和调试方法。
+本指南帮助您解决NewHTTPS部署和使用过程中可能遇到的常见问题。
 
-## 🔍 诊断工具
+## 🚀 部署问题
 
-### 快速诊断脚本
+### Docker相关问题
+
+#### 1. Docker Compose版本不兼容
 ```bash
-# 检查服务状态
-sudo systemctl status newhttps-api newhttps-web
+# 错误信息
+ERROR: Version in "./docker-compose.yml" is unsupported
 
-# 检查端口监听
-sudo ss -tuln | grep -E ':(3000|8080)'
-
-# 检查进程
-ps aux | grep -E '(node|newhttps)'
-
-# 检查日志
-sudo journalctl -u newhttps-api -n 20
-sudo journalctl -u newhttps-web -n 20
+# 解决方案
+# 安装最新版本的Docker Compose
+sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
 ```
 
-### 健康检查
+#### 2. 端口冲突
 ```bash
-# API 健康检查
-curl -v http://localhost:3000/health
+# 错误信息
+Error starting userland proxy: listen tcp 0.0.0.0:3000: bind: address already in use
 
-# 预期响应
-HTTP/1.1 200 OK
-{"status":"ok","timestamp":"2024-01-01T00:00:00.000Z"}
+# 检查端口占用
+netstat -tlnp | grep :3000
+lsof -i :3000
+
+# 解决方案1: 停止占用端口的服务
+sudo systemctl stop service-name
+
+# 解决方案2: 修改端口配置
+vim .env
+# 修改 API_PORT=3001
 ```
 
-## 🚨 常见问题
-
-### 1. 安装问题
-
-#### 问题：Node.js 版本不兼容
-```
-[ERROR] 需要 Node.js 18.0 或更高版本，当前版本: v16.x.x
-```
-
-**解决方案**：
+#### 3. 权限问题
 ```bash
-# AlimaLinux/CentOS/RHEL
-sudo dnf module reset nodejs
-sudo dnf module install nodejs:18/common
+# 错误信息
+Permission denied
 
-# Ubuntu/Debian
-curl -fsSL https://deb.nodesource.com/setup_18.x | sudo bash -
-sudo apt install -y nodejs
-
-# 验证版本
-node --version
+# 解决方案
+sudo chown -R 1001:1001 data/
+sudo chmod -R 755 data/
 ```
 
-#### 问题：npm install 失败
-```
-npm ERR! network request failed
-```
+### 构建问题
 
-**解决方案**：
+#### 1. TypeScript编译错误
 ```bash
-# 检查网络连接
-ping npmjs.org
+# 错误信息
+TypeScript compilation failed
 
-# 配置 npm 镜像（中国用户）
+# 解决方案
+cd api
+npm install
+npm run build
+
+# 或者
+cd web
+npm install
+npm run build
+```
+
+#### 2. 依赖安装失败
+```bash
+# 错误信息
+npm ERR! network timeout
+
+# 解决方案
+# 使用国内镜像
 npm config set registry https://registry.npmmirror.com
-
-# 清理缓存重试
-npm cache clean --force
 npm install
 ```
 
-#### 问题：权限错误
-```
-EACCES: permission denied
-```
+## 🔧 服务运行问题
 
-**解决方案**：
+### API服务问题
+
+#### 1. API服务无法启动
 ```bash
-# 检查文件权限
-sudo ls -la /opt/newhttps/
+# 检查日志
+docker-compose logs newhttps-api
 
-# 修复权限
-sudo chown -R newhttps:newhttps /opt/newhttps/
-sudo chmod -R 755 /opt/newhttps/
+# 常见原因和解决方案
+# 1. 数据库连接失败
+mkdir -p data/newhttps
+sudo chown -R 1001:1001 data/
 
-# 重新安装
-sudo ./standalone-install.sh
+# 2. 环境变量配置错误
+cp .env.example .env
+vim .env  # 检查配置
 ```
 
-### 2. 服务启动问题
-
-#### 问题：API 服务无法启动
+#### 2. 健康检查失败
 ```bash
-# 查看详细错误
-sudo journalctl -u newhttps-api -n 50
+# 检查API健康状态
+curl http://localhost:3000/health
 
-# 常见错误和解决方案
+# 如果无响应，检查服务状态
+docker-compose ps
+docker-compose logs newhttps-api
 ```
 
-**错误 1：端口被占用**
-```
-Error: listen EADDRINUSE :::3000
-```
-解决方案：
+### Web界面问题
+
+#### 1. Web界面无法访问
 ```bash
-# 查找占用进程
-sudo lsof -i :3000
-sudo kill -9 <PID>
+# 检查Web服务状态
+curl -I http://localhost:8080
 
-# 或修改端口
-sudo nano /opt/newhttps/config/api.env
-# 修改 PORT=3001
-sudo systemctl restart newhttps-api
+# 检查Nginx配置
+docker-compose logs newhttps-web
 ```
 
-**错误 2：数据库权限问题**
-```
-SQLITE_CANTOPEN: unable to open database file
-```
-解决方案：
+#### 2. 页面加载错误
 ```bash
-# 检查数据库目录权限
-sudo ls -la /opt/newhttps/data/
-sudo chown -R newhttps:newhttps /opt/newhttps/data/
-sudo chmod 755 /opt/newhttps/data/
-sudo systemctl restart newhttps-api
+# 检查浏览器控制台错误
+# 常见问题：API地址配置错误
+
+# 检查代理配置
+docker-compose logs newhttps-nginx
 ```
 
-**错误 3：环境变量问题**
-```
-JWT_SECRET is not defined
-```
-解决方案：
+## 🤖 Agent问题
+
+### Agent安装问题
+
+#### 1. 下载失败
 ```bash
-# 检查配置文件
-sudo cat /opt/newhttps/config/api.env
+# 错误信息
+wget: unable to resolve host address
 
-# 重新生成配置
-sudo openssl rand -base64 32 > /tmp/jwt_secret
-sudo sed -i "s/JWT_SECRET=.*/JWT_SECRET=$(cat /tmp/jwt_secret)/" /opt/newhttps/config/api.env
-sudo systemctl restart newhttps-api
+# 解决方案
+# 检查网络连接
+ping github.com
+
+# 使用代理下载
+wget --proxy=http://proxy:port https://raw.githubusercontent.com/Yunweifor/newhttps/main/agent/newhttps-agent.sh
 ```
 
-#### 问题：Web 服务无法启动
+#### 2. 权限不足
 ```bash
-# 查看 Web 服务日志
-sudo journalctl -u newhttps-web -n 50
+# 错误信息
+Permission denied
+
+# 解决方案
+sudo chmod +x newhttps-agent.sh
+sudo ./newhttps-agent.sh --install
 ```
 
-**错误 1：serve 命令未找到**
-```
-newhttps-web.service: Failed to execute command: No such file or directory
-```
-解决方案：
+### Agent运行问题
+
+#### 1. 无法连接API服务器
 ```bash
-# 全局安装 serve
-sudo npm install -g serve
+# 检查网络连接
+curl -I https://your-server.com:3000/health
 
-# 或修改服务文件使用本地安装
-sudo systemctl edit newhttps-web
-# 添加：
-[Service]
-ExecStart=/bin/bash -lc 'npx serve -s dist -l 8080'
+# 检查防火墙
+sudo ufw status
+sudo firewall-cmd --list-all
+
+# 检查API Token
+./newhttps-agent.sh --config
 ```
 
-### 3. 网络连接问题
-
-#### 问题：无法访问 Web 界面
-**检查步骤**：
+#### 2. Nginx配置检测失败
 ```bash
-# 1. 检查服务状态
-sudo systemctl status newhttps-web
+# 检查Nginx状态
+systemctl status nginx
 
-# 2. 检查端口监听
-sudo ss -tuln | grep :8080
+# 检查配置语法
+nginx -t
 
-# 3. 检查防火墙
-sudo firewall-cmd --list-ports
-sudo firewall-cmd --permanent --add-port=8080/tcp
-sudo firewall-cmd --reload
-
-# 4. 检查 SELinux
-getenforce
-sudo setsebool -P httpd_can_network_connect 1
+# 检查配置文件权限
+ls -la /etc/nginx/
 ```
 
-#### 问题：API 连接超时
+#### 3. 证书部署失败
 ```bash
-# 检查 API 服务
-curl -v http://localhost:3000/health
+# 查看Agent日志
+./newhttps-agent.sh --logs
+tail -f /var/log/newhttps-agent.log
 
-# 检查网络配置
-sudo netstat -tuln | grep :3000
+# 手动回滚
+./newhttps-agent.sh --rollback
 
-# 检查防火墙规则
-sudo iptables -L | grep 3000
+# 重新配置
+./newhttps-agent.sh --config
 ```
 
-### 4. 证书相关问题
+## 🔍 诊断工具
 
-#### 问题：ACME 挑战失败
+### 系统诊断脚本
+
+创建诊断脚本 `diagnose.sh`：
+
 ```bash
-# 检查 ACME 目录权限
-sudo ls -la /opt/newhttps/data/acme/
-sudo chown -R newhttps:newhttps /opt/newhttps/data/acme/
+#!/bin/bash
+echo "=== NewHTTPS 系统诊断 ==="
 
-# 检查域名解析
-nslookup your-domain.com
+echo "1. Docker状态:"
+docker --version
+docker-compose --version
 
-# 检查 HTTP 挑战路径
-curl http://your-domain.com/.well-known/acme-challenge/test
-```
+echo "2. 服务状态:"
+docker-compose ps
 
-#### 问题：证书下载失败
-```bash
-# 检查证书存储目录
-sudo ls -la /opt/newhttps/data/certificates/
+echo "3. 端口检查:"
+netstat -tlnp | grep -E ":(3000|8080|80|443)"
 
-# 检查 API 日志
-sudo journalctl -u newhttps-api | grep -i certificate
-
-# 手动测试证书下载
-curl -H "Authorization: Bearer YOUR_TOKEN" \
-     http://localhost:3000/api/v1/cert/CERT_ID/download?agent_id=AGENT_ID
-```
-
-### 5. 性能问题
-
-#### 问题：服务响应慢
-```bash
-# 检查系统资源
-top
-free -h
+echo "4. 磁盘空间:"
 df -h
 
-# 检查进程状态
-ps aux | grep node
+echo "5. 内存使用:"
+free -h
 
-# 优化建议
-sudo systemctl edit newhttps-api
-# 添加：
-[Service]
-Environment=UV_THREADPOOL_SIZE=16
-Environment=NODE_ENV=production
-LimitNOFILE=65536
+echo "6. API健康检查:"
+curl -s http://localhost:3000/health || echo "API不可访问"
+
+echo "7. Web界面检查:"
+curl -s -I http://localhost:8080 | head -1 || echo "Web界面不可访问"
 ```
 
-#### 问题：内存使用过高
-```bash
-# 监控内存使用
-sudo systemctl status newhttps-api
-ps -o pid,ppid,cmd,%mem,%cpu -p $(pgrep node)
+### 日志收集
 
-# 重启服务释放内存
-sudo systemctl restart newhttps-api newhttps-web
+```bash
+# 收集所有日志
+mkdir -p /tmp/newhttps-logs
+docker-compose logs > /tmp/newhttps-logs/docker-compose.log
+cp .env /tmp/newhttps-logs/env.log
+cp -r data/ /tmp/newhttps-logs/data-backup/
+tar -czf newhttps-logs.tar.gz /tmp/newhttps-logs/
 ```
 
-## 🔧 调试模式
+## 🛠️ 性能优化
 
-### 启用详细日志
+### 1. 内存优化
 ```bash
-# 修改 API 配置
-sudo nano /opt/newhttps/config/api.env
-# 设置 LOG_LEVEL=DEBUG
-
-# 重启服务
-sudo systemctl restart newhttps-api
-
-# 查看详细日志
-sudo journalctl -u newhttps-api -f
+# 限制容器内存使用
+# 在docker-compose.yml中添加：
+services:
+  newhttps-api:
+    mem_limit: 512m
+  newhttps-web:
+    mem_limit: 256m
 ```
 
-### 手动启动服务（调试用）
+### 2. 磁盘优化
 ```bash
-# 停止系统服务
-sudo systemctl stop newhttps-api
+# 清理Docker镜像
+docker system prune -a
 
-# 手动启动（前台运行）
-cd /opt/newhttps/api
-sudo -u newhttps bash -lc 'node dist/index.js'
+# 清理日志文件
+sudo truncate -s 0 /var/log/newhttps-agent.log
+```
+
+### 3. 网络优化
+```bash
+# 使用本地DNS缓存
+echo "nameserver 127.0.0.1" > /etc/resolv.conf
 ```
 
 ## 📞 获取帮助
 
-### 收集诊断信息
+### 1. 查看日志
 ```bash
-# 创建诊断报告
-cat > /tmp/newhttps-diag.txt << EOF
-=== 系统信息 ===
-$(uname -a)
-$(cat /etc/os-release)
+# Docker服务日志
+docker-compose logs -f
 
-=== 服务状态 ===
-$(sudo systemctl status newhttps-api newhttps-web)
+# Agent日志
+tail -f /var/log/newhttps-agent.log
 
-=== 端口监听 ===
-$(sudo ss -tuln | grep -E ':(3000|8080)')
-
-=== 最近日志 ===
-$(sudo journalctl -u newhttps-api -n 20)
-$(sudo journalctl -u newhttps-web -n 20)
-
-=== 配置文件 ===
-$(sudo cat /opt/newhttps/config/api.env)
-EOF
-
-echo "诊断信息已保存到 /tmp/newhttps-diag.txt"
+# 系统日志
+journalctl -u docker
 ```
 
-### 联系支持
-- 查看项目文档：[docs/](../docs/)
-- 提交 Issue：GitHub Issues
-- 社区讨论：项目讨论区
+### 2. 社区支持
+- GitHub Issues: https://github.com/Yunweifor/newhttps/issues
+- 讨论区: https://github.com/Yunweifor/newhttps/discussions
 
-### 有用的命令
-```bash
-# 完全重置服务
-sudo systemctl stop newhttps-api newhttps-web
-sudo systemctl reset-failed newhttps-api newhttps-web
-sudo systemctl daemon-reload
-sudo systemctl start newhttps-api newhttps-web
+### 3. 提交Bug报告
 
-# 检查配置文件语法
-sudo nginx -t  # 如果使用 Nginx
-node -c /opt/newhttps/api/dist/index.js  # 检查 Node.js 语法
+提交Bug时请包含：
+1. 错误信息和日志
+2. 系统环境信息
+3. 复现步骤
+4. 配置文件（去除敏感信息）
 
-# 网络诊断
-sudo tcpdump -i any port 3000  # 监控 API 流量
-sudo tcpdump -i any port 8080  # 监控 Web 流量
-```
+---
+
+**如果本指南没有解决您的问题，请在GitHub上提交Issue，我们会尽快帮助您解决！** 🚀
