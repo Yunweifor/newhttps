@@ -10,7 +10,7 @@
             :disabled="agents.length === 0"
           >
             <a-select-option v-for="agent in agents" :key="agent.id" :value="agent.id">
-              {{ agent.name }} ({{ agent.hostname }})
+              {{ agent.name || agent.hostname }} ({{ agent.hostname }})
             </a-select-option>
           </a-select>
           <a-button type="primary" @click="showAddModal = true">

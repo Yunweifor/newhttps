@@ -168,7 +168,7 @@ const loadStats = async () => {
     // 计算即将过期的证书数量
     const now = new Date()
     const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
-    const expiringSoon = certsResponse.data.filter(cert => {
+    const expiringSoon = certsResponse.data.filter((cert: any) => {
       const expiresAt = new Date(cert.expiresAt)
       return expiresAt <= thirtyDaysFromNow && expiresAt > now
     }).length

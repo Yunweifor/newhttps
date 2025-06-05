@@ -45,9 +45,9 @@
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'enabled'">
-            <a-switch 
-              :checked="record.enabled" 
-              @change="(checked) => toggleSchedule(record, checked)"
+            <a-switch
+              :checked="record.enabled"
+              @change="(checked: boolean) => toggleSchedule(record, checked)"
               :loading="record.toggling"
             />
           </template>
@@ -74,9 +74,9 @@
               <a-button type="link" size="small" @click="editSchedule(record)">
                 编辑
               </a-button>
-              <a-button 
-                type="link" 
-                size="small" 
+              <a-button
+                type="link"
+                size="small"
                 @click="triggerRenewal(record)"
                 :loading="record.triggering"
               >
@@ -181,7 +181,7 @@ import { getCertificates, type Certificate } from '../api/certificate'
 // 响应式数据
 const loading = ref(false)
 const showCreateModal = ref(false)
-const schedules = ref<RenewalSchedule[]>([])
+const schedules = ref<(RenewalSchedule & { toggling?: boolean; triggering?: boolean })[]>([])
 const certificates = ref<Certificate[]>([])
 const editingSchedule = ref<RenewalSchedule | null>(null)
 const pagination = ref({

@@ -2,6 +2,7 @@ import { request } from './request'
 
 export interface Agent {
   id: string
+  name?: string
   hostname: string
   os: string
   nginx_version: string
