@@ -23,6 +23,36 @@ export interface AgentActivity {
   timestamp: string;
 }
 
+export interface RenewalSchedule {
+  id: string;
+  certificate_id: string;
+  cron_expression: string;
+  days_before_expiry: number;
+  enabled: boolean;
+  last_run?: string;
+  next_run?: string;
+  last_result?: 'success' | 'failed' | 'skipped';
+  last_error?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Certificate {
+  id: string;
+  domains: string;
+  certificate: string;
+  private_key: string;
+  certificate_chain: string;
+  ca: string;
+  status: 'active' | 'expired' | 'revoked' | 'pending';
+  issued_at: string;
+  expires_at: string;
+  created_at: string;
+  updated_at: string;
+  auto_renew: boolean;
+  renew_days: number;
+}
+
 /**
  * 数据库服务类
  * 使用 SQLite 存储 Agent 信息和活动日志
@@ -97,6 +127,41 @@ export class Database {
       )
     `;
 
+    const createCertificatesTable = `
+      CREATE TABLE IF NOT EXISTS certificates (
+        id TEXT PRIMARY KEY,
+        domains TEXT NOT NULL,
+        certificate TEXT NOT NULL,
+        private_key TEXT NOT NULL,
+        certificate_chain TEXT NOT NULL,
+        ca TEXT NOT NULL,
+        status TEXT DEFAULT 'active',
+        issued_at DATETIME NOT NULL,
+        expires_at DATETIME NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        auto_renew BOOLEAN DEFAULT 1,
+        renew_days INTEGER DEFAULT 30
+      )
+    `;
+
+    const createRenewalSchedulesTable = `
+      CREATE TABLE IF NOT EXISTS renewal_schedules (
+        id TEXT PRIMARY KEY,
+        certificate_id TEXT NOT NULL,
+        cron_expression TEXT NOT NULL,
+        days_before_expiry INTEGER DEFAULT 30,
+        enabled BOOLEAN DEFAULT 1,
+        last_run DATETIME,
+        next_run DATETIME,
+        last_result TEXT,
+        last_error TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (certificate_id) REFERENCES certificates (id)
+      )
+    `;
+
     return new Promise((resolve, reject) => {
       if (!this.db) {
         reject(new Error('Database not initialized'));
@@ -115,6 +180,22 @@ export class Database {
         this.db!.run(createActivitiesTable, (err) => {
           if (err) {
             logger.error('Failed to create activities table:', err);
+            reject(err);
+            return;
+          }
+        });
+
+        this.db!.run(createCertificatesTable, (err) => {
+          if (err) {
+            logger.error('Failed to create certificates table:', err);
+            reject(err);
+            return;
+          }
+        });
+
+        this.db!.run(createRenewalSchedulesTable, (err) => {
+          if (err) {
+            logger.error('Failed to create renewal schedules table:', err);
             reject(err);
             return;
           }
@@ -282,6 +363,308 @@ export class Database {
             details: JSON.parse(row.details || '{}')
           }));
           resolve(activities);
+        }
+      });
+    });
+  }
+
+  /**
+   * 保存证书到数据库
+   */
+  async saveCertificate(certificate: Omit<Certificate, 'created_at' | 'updated_at'>): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
+
+      const sql = `
+        INSERT OR REPLACE INTO certificates
+        (id, domains, certificate, private_key, certificate_chain, ca, status,
+         issued_at, expires_at, auto_renew, renew_days)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `;
+
+      this.db.run(sql, [
+        certificate.id,
+        certificate.domains,
+        certificate.certificate,
+        certificate.private_key,
+        certificate.certificate_chain,
+        certificate.ca,
+        certificate.status,
+        certificate.issued_at,
+        certificate.expires_at,
+        certificate.auto_renew ? 1 : 0,
+        certificate.renew_days
+      ], (err) => {
+        if (err) {
+          logger.error('Failed to save certificate:', err);
+          reject(err);
+        } else {
+          logger.info(`Certificate saved: ${certificate.id}`);
+          resolve();
+        }
+      });
+    });
+  }
+
+  /**
+   * 获取证书
+   */
+  async getCertificate(certificateId: string): Promise<Certificate | null> {
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
+
+      const sql = 'SELECT * FROM certificates WHERE id = ?';
+
+      this.db.get(sql, [certificateId], (err, row: Certificate) => {
+        if (err) {
+          logger.error('Failed to get certificate:', err);
+          reject(err);
+        } else {
+          resolve(row || null);
+        }
+      });
+    });
+  }
+
+  /**
+   * 获取所有证书
+   */
+  async getAllCertificates(): Promise<Certificate[]> {
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
+
+      const sql = 'SELECT * FROM certificates ORDER BY created_at DESC';
+
+      this.db.all(sql, [], (err, rows: Certificate[]) => {
+        if (err) {
+          logger.error('Failed to get certificates:', err);
+          reject(err);
+        } else {
+          resolve(rows || []);
+        }
+      });
+    });
+  }
+
+  /**
+   * 更新证书
+   */
+  async updateCertificate(certificate: Certificate): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
+
+      const sql = `
+        UPDATE certificates SET
+        domains = ?, certificate = ?, private_key = ?, certificate_chain = ?,
+        ca = ?, status = ?, issued_at = ?, expires_at = ?,
+        auto_renew = ?, renew_days = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `;
+
+      this.db.run(sql, [
+        certificate.domains,
+        certificate.certificate,
+        certificate.private_key,
+        certificate.certificate_chain,
+        certificate.ca,
+        certificate.status,
+        certificate.issued_at,
+        certificate.expires_at,
+        certificate.auto_renew ? 1 : 0,
+        certificate.renew_days,
+        certificate.id
+      ], (err) => {
+        if (err) {
+          logger.error('Failed to update certificate:', err);
+          reject(err);
+        } else {
+          logger.info(`Certificate updated: ${certificate.id}`);
+          resolve();
+        }
+      });
+    });
+  }
+
+  /**
+   * 删除证书
+   */
+  async deleteCertificate(certificateId: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
+
+      const sql = 'DELETE FROM certificates WHERE id = ?';
+
+      this.db.run(sql, [certificateId], (err) => {
+        if (err) {
+          logger.error('Failed to delete certificate:', err);
+          reject(err);
+        } else {
+          logger.info(`Certificate deleted: ${certificateId}`);
+          resolve();
+        }
+      });
+    });
+  }
+
+  /**
+   * 保存续期调度
+   */
+  async saveRenewalSchedule(schedule: Omit<RenewalSchedule, 'created_at' | 'updated_at'>): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
+
+      const sql = `
+        INSERT OR REPLACE INTO renewal_schedules
+        (id, certificate_id, cron_expression, days_before_expiry, enabled,
+         last_run, next_run, last_result, last_error)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `;
+
+      this.db.run(sql, [
+        schedule.id,
+        schedule.certificate_id,
+        schedule.cron_expression,
+        schedule.days_before_expiry,
+        schedule.enabled ? 1 : 0,
+        schedule.last_run || null,
+        schedule.next_run || null,
+        schedule.last_result || null,
+        schedule.last_error || null
+      ], (err) => {
+        if (err) {
+          logger.error('Failed to save renewal schedule:', err);
+          reject(err);
+        } else {
+          logger.info(`Renewal schedule saved: ${schedule.id}`);
+          resolve();
+        }
+      });
+    });
+  }
+
+  /**
+   * 获取续期调度
+   */
+  async getRenewalSchedule(scheduleId: string): Promise<RenewalSchedule | null> {
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
+
+      const sql = 'SELECT * FROM renewal_schedules WHERE id = ?';
+
+      this.db.get(sql, [scheduleId], (err, row: RenewalSchedule) => {
+        if (err) {
+          logger.error('Failed to get renewal schedule:', err);
+          reject(err);
+        } else {
+          resolve(row || null);
+        }
+      });
+    });
+  }
+
+  /**
+   * 获取所有续期调度
+   */
+  async getAllRenewalSchedules(): Promise<RenewalSchedule[]> {
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
+
+      const sql = 'SELECT * FROM renewal_schedules ORDER BY created_at DESC';
+
+      this.db.all(sql, [], (err, rows: RenewalSchedule[]) => {
+        if (err) {
+          logger.error('Failed to get renewal schedules:', err);
+          reject(err);
+        } else {
+          resolve(rows || []);
+        }
+      });
+    });
+  }
+
+  /**
+   * 更新续期调度
+   */
+  async updateRenewalSchedule(schedule: RenewalSchedule): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
+
+      const sql = `
+        UPDATE renewal_schedules SET
+        certificate_id = ?, cron_expression = ?, days_before_expiry = ?, enabled = ?,
+        last_run = ?, next_run = ?, last_result = ?, last_error = ?,
+        updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `;
+
+      this.db.run(sql, [
+        schedule.certificate_id,
+        schedule.cron_expression,
+        schedule.days_before_expiry,
+        schedule.enabled ? 1 : 0,
+        schedule.last_run || null,
+        schedule.next_run || null,
+        schedule.last_result || null,
+        schedule.last_error || null,
+        schedule.id
+      ], (err) => {
+        if (err) {
+          logger.error('Failed to update renewal schedule:', err);
+          reject(err);
+        } else {
+          logger.info(`Renewal schedule updated: ${schedule.id}`);
+          resolve();
+        }
+      });
+    });
+  }
+
+  /**
+   * 删除续期调度
+   */
+  async deleteRenewalSchedule(scheduleId: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
+
+      const sql = 'DELETE FROM renewal_schedules WHERE id = ?';
+
+      this.db.run(sql, [scheduleId], (err) => {
+        if (err) {
+          logger.error('Failed to delete renewal schedule:', err);
+          reject(err);
+        } else {
+          logger.info(`Renewal schedule deleted: ${scheduleId}`);
+          resolve();
         }
       });
     });

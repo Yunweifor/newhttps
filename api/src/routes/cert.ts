@@ -50,7 +50,7 @@ router.get('/list', authMiddleware, async (req, res) => {
  * 申请新证书
  * POST /api/v1/cert/create
  */
-router.post('/create', authMiddleware, async (req, res) => {
+router.post('/create', authMiddleware, async (req, res): Promise<any> => {
   try {
     const { domains, ca, email, challengeType, autoRenew, renewDays } = req.body;
 
@@ -301,7 +301,7 @@ router.get('/:certId/details', async (req, res): Promise<any> => {
  * 续期证书
  * POST /api/v1/cert/:certId/renew
  */
-router.post('/:certId/renew', authMiddleware, async (req, res) => {
+router.post('/:certId/renew', authMiddleware, async (req, res): Promise<any> => {
   try {
     const { certId } = req.params;
 
@@ -334,7 +334,7 @@ router.post('/:certId/renew', authMiddleware, async (req, res) => {
  * 删除证书
  * DELETE /api/v1/cert/:certId
  */
-router.delete('/:certId', authMiddleware, async (req, res) => {
+router.delete('/:certId', authMiddleware, async (req, res): Promise<any> => {
   try {
     const { certId } = req.params;
 

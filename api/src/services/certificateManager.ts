@@ -385,8 +385,21 @@ export class CertificateManager {
    * 保存证书到数据库
    */
   private async saveCertificateToDatabase(certificate: Certificate): Promise<void> {
-    // 实际实现需要在 Database 类中添加证书相关方法
-    logger.debug(`Saving certificate to database: ${certificate.id}`);
+    const dbCertificate = {
+      id: certificate.id,
+      domains: JSON.stringify(certificate.domains),
+      certificate: certificate.certificate,
+      private_key: certificate.privateKey,
+      certificate_chain: certificate.certificateChain,
+      ca: certificate.ca,
+      status: certificate.status,
+      issued_at: certificate.issuedAt.toISOString(),
+      expires_at: certificate.expiresAt.toISOString(),
+      auto_renew: true,
+      renew_days: 30
+    };
+
+    await this.database.saveCertificate(dbCertificate);
   }
 
   /**
@@ -402,25 +415,38 @@ export class CertificateManager {
    * 从数据库获取所有证书
    */
   private async getCertificatesFromDatabase(): Promise<Certificate[]> {
-    // 实际实现需要在 Database 类中添加证书相关方法
-    logger.debug('Getting all certificates from database');
-    return [];
+    const dbCertificates = await this.database.getAllCertificates();
+    return dbCertificates.map(this.convertDbCertificateToCertificate);
   }
 
   /**
    * 更新数据库中的证书
    */
   private async updateCertificateInDatabase(certificate: Certificate): Promise<void> {
-    // 实际实现需要在 Database 类中添加证书相关方法
-    logger.debug(`Updating certificate in database: ${certificate.id}`);
+    const dbCertificate = {
+      id: certificate.id,
+      domains: JSON.stringify(certificate.domains),
+      certificate: certificate.certificate,
+      private_key: certificate.privateKey,
+      certificate_chain: certificate.certificateChain,
+      ca: certificate.ca,
+      status: certificate.status,
+      issued_at: certificate.issuedAt.toISOString(),
+      expires_at: certificate.expiresAt.toISOString(),
+      auto_renew: true,
+      renew_days: 30,
+      created_at: certificate.createdAt.toISOString(),
+      updated_at: certificate.updatedAt.toISOString()
+    };
+
+    await this.database.updateCertificate(dbCertificate);
   }
 
   /**
    * 从数据库删除证书
    */
   private async deleteCertificateFromDatabase(id: string): Promise<void> {
-    // 实际实现需要在 Database 类中添加证书相关方法
-    logger.debug(`Deleting certificate from database: ${id}`);
+    await this.database.deleteCertificate(id);
   }
 
   /**
@@ -430,5 +456,24 @@ export class CertificateManager {
     // 这里可以实现续期调度逻辑
     // 例如：添加到任务队列、设置定时器等
     logger.debug(`Scheduled renewal for certificate ${certificateId} (${daysBeforeExpiry} days before expiry)`);
+  }
+
+  /**
+   * 转换数据库证书格式到业务对象格式
+   */
+  private convertDbCertificateToCertificate(dbCert: any): Certificate {
+    return {
+      id: dbCert.id,
+      domains: JSON.parse(dbCert.domains),
+      certificate: dbCert.certificate,
+      privateKey: dbCert.private_key,
+      certificateChain: dbCert.certificate_chain,
+      ca: dbCert.ca,
+      status: dbCert.status,
+      issuedAt: new Date(dbCert.issued_at),
+      expiresAt: new Date(dbCert.expires_at),
+      createdAt: new Date(dbCert.created_at),
+      updatedAt: new Date(dbCert.updated_at)
+    };
   }
 }

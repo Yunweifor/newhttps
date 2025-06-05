@@ -35,6 +35,15 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/renewal-schedules',
+    name: 'RenewalSchedules',
+    component: () => import('@/views/RenewalSchedules.vue'),
+    meta: {
+      title: '自动续期',
+      requiresAuth: true
+    }
+  },
+  {
     path: '/deployment',
     name: 'Deployment',
     redirect: '/deployment/tasks',

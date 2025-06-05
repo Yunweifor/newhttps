@@ -138,7 +138,7 @@ router.get('/tasks/:taskId', authMiddleware, async (req, res): Promise<any> => {
  * 创建部署任务
  * POST /api/v1/deployment/tasks
  */
-router.post('/tasks', authMiddleware, async (req, res) => {
+router.post('/tasks', authMiddleware, async (req, res): Promise<any> => {
   try {
     const { certificateId, agentId, type, target } = req.body;
 
