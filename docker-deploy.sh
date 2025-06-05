@@ -37,9 +37,17 @@ check_requirements() {
         exit 1
     fi
     
-    if ! command -v docker-compose &> /dev/null; then
+    # 检查 Docker Compose (新版本集成在 Docker CLI 中)
+    if ! docker compose version &> /dev/null && ! command -v docker-compose &> /dev/null; then
         log_error "Docker Compose 未安装，请先安装 Docker Compose"
         exit 1
+    fi
+
+    # 确定使用哪个 Docker Compose 命令
+    if docker compose version &> /dev/null; then
+        DOCKER_COMPOSE="docker compose"
+    else
+        DOCKER_COMPOSE="docker-compose"
     fi
     
     log_success "系统要求检查通过"
@@ -98,13 +106,13 @@ deploy_services() {
     fi
     
     log_info "停止现有服务..."
-    docker-compose -f "$compose_file" down 2>/dev/null || true
-    
+    $DOCKER_COMPOSE -f "$compose_file" down 2>/dev/null || true
+
     log_info "构建镜像..."
-    docker-compose -f "$compose_file" build --no-cache
-    
+    $DOCKER_COMPOSE -f "$compose_file" build --no-cache
+
     log_info "启动服务..."
-    docker-compose -f "$compose_file" up -d
+    $DOCKER_COMPOSE -f "$compose_file" up -d
     
     log_success "服务部署完成"
 }
@@ -150,10 +158,10 @@ show_results() {
     
     echo
     echo "管理命令："
-    echo "  - 查看状态: docker-compose ps"
-    echo "  - 查看日志: docker-compose logs -f"
-    echo "  - 停止服务: docker-compose down"
-    echo "  - 重启服务: docker-compose restart"
+    echo "  - 查看状态: $DOCKER_COMPOSE ps"
+    echo "  - 查看日志: $DOCKER_COMPOSE logs -f"
+    echo "  - 停止服务: $DOCKER_COMPOSE down"
+    echo "  - 重启服务: $DOCKER_COMPOSE restart"
     echo
     echo "数据目录："
     echo "  - 应用数据: ./data/newhttps"

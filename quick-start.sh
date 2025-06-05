@@ -46,9 +46,13 @@ check_requirements() {
         exit 1
     fi
 
-    # 检查 Docker Compose
-    if command_exists docker-compose || docker compose version >/dev/null 2>&1; then
-        log_success "Docker Compose 已安装"
+    # 检查 Docker Compose (新版本集成在 Docker CLI 中)
+    if docker compose version >/dev/null 2>&1; then
+        log_success "Docker Compose 已安装 (集成版本)"
+        DOCKER_COMPOSE="docker compose"
+    elif command_exists docker-compose; then
+        log_success "Docker Compose 已安装 (独立版本)"
+        DOCKER_COMPOSE="docker-compose"
     else
         log_error "Docker Compose 未安装，请先安装 Docker Compose"
         exit 1
@@ -108,10 +112,10 @@ start_services() {
     log_info "启动 NewHTTPS 服务..."
 
     # 停止现有服务
-    docker-compose down 2>/dev/null || true
+    $DOCKER_COMPOSE down 2>/dev/null || true
 
     # 构建并启动服务
-    docker-compose up -d --build
+    $DOCKER_COMPOSE up -d --build
 
     # 等待服务启动
     log_info "等待服务启动..."
@@ -140,7 +144,7 @@ verify_installation() {
     done
 
     log_error "API 服务验证失败"
-    docker-compose logs newhttps-api
+    $DOCKER_COMPOSE logs newhttps-api
 }
 
 # 显示安装结果
@@ -155,10 +159,10 @@ show_results() {
     echo "  - Nginx 代理: http://localhost:80"
     echo
     echo "管理命令："
-    echo "  - 查看服务状态: docker-compose ps"
-    echo "  - 查看日志: docker-compose logs -f"
-    echo "  - 停止服务: docker-compose down"
-    echo "  - 重启服务: docker-compose restart"
+    echo "  - 查看服务状态: $DOCKER_COMPOSE ps"
+    echo "  - 查看日志: $DOCKER_COMPOSE logs -f"
+    echo "  - 停止服务: $DOCKER_COMPOSE down"
+    echo "  - 重启服务: $DOCKER_COMPOSE restart"
     echo
     echo "数据目录："
     echo "  - 应用数据: ./data/newhttps"
