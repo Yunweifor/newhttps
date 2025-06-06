@@ -32,6 +32,8 @@ export interface CertificateListResponse {
 export interface CertificateResponse {
   success: boolean
   data: Certificate
+  message?: string
+  error?: string
 }
 
 // 获取证书列表

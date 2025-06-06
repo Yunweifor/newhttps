@@ -264,37 +264,67 @@ const handleTableChange = (pag: any) => {
 const handleAddCertificate = async () => {
   try {
     // 验证表单
-    if (!addForm.value.domains[0] || !addForm.value.email) {
-      message.error('请填写完整的证书信息')
+    if (!addForm.value.domains[0]?.trim()) {
+      message.error('请输入域名')
+      return
+    }
+
+    if (!addForm.value.email?.trim()) {
+      message.error('请输入邮箱地址')
+      return
+    }
+
+    // 验证邮箱格式
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(addForm.value.email)) {
+      message.error('请输入有效的邮箱地址')
+      return
+    }
+
+    // 验证域名格式
+    const domainRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$|^\*\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/
+    const domain = addForm.value.domains[0].trim()
+    if (!domainRegex.test(domain)) {
+      message.error('请输入有效的域名格式')
       return
     }
 
     const createRequest: CertificateCreateRequest = {
-      domains: addForm.value.domains.filter(domain => domain.trim()),
+      domains: [domain], // 只使用第一个域名
       ca: addForm.value.ca,
-      email: addForm.value.email,
+      email: addForm.value.email.trim(),
       challengeType: addForm.value.challengeType,
       autoRenew: addForm.value.autoRenew,
       renewDays: addForm.value.renewDays
     }
 
-    await createCertificate(createRequest)
-    message.success('证书申请成功')
-    showAddModal.value = false
+    message.loading('正在申请证书...', 0)
+    const response = await createCertificate(createRequest)
+    message.destroy()
 
-    // 重置表单
-    addForm.value = {
-      domains: [''],
-      ca: 'letsencrypt',
-      email: '',
-      challengeType: 'http-01',
-      autoRenew: true,
-      renewDays: 30
+    if (response.success) {
+      message.success(response.message || '证书申请成功')
+      showAddModal.value = false
+
+      // 重置表单
+      addForm.value = {
+        domains: [''],
+        ca: 'letsencrypt',
+        email: '',
+        challengeType: 'http-01',
+        autoRenew: true,
+        renewDays: 30
+      }
+
+      // 重新加载证书列表
+      await loadCertificates()
+    } else {
+      message.error(response.error || '证书申请失败')
     }
-
-    loadCertificates()
-  } catch (error) {
-    message.error('证书申请失败')
+  } catch (error: any) {
+    message.destroy()
+    const errorMessage = error?.response?.data?.error || error?.message || '证书申请失败'
+    message.error(errorMessage)
     console.error('Failed to create certificate:', error)
   }
 }

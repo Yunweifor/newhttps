@@ -41,7 +41,8 @@ instance.interceptors.response.use(
       // 不显示错误消息，让组件自己处理
       return Promise.reject(new Error(data.error || '请求失败'))
     }
-    
+
+    // 对于成功的响应，直接返回完整的数据对象
     return data
   },
   (error) => {
