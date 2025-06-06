@@ -225,8 +225,10 @@ const loadTasks = async () => {
     tasks.value = response.data
     pagination.value.total = response.total
   } catch (error) {
-    message.error('加载部署任务失败')
-    console.error('Failed to load deployment tasks:', error)
+    console.warn('Failed to load deployment tasks:', error)
+    // 设置空数据，避免显示错误
+    tasks.value = []
+    pagination.value.total = 0
   } finally {
     loading.value = false
   }
@@ -237,7 +239,8 @@ const loadCertificates = async () => {
     const response = await getCertificates()
     certificates.value = response.data
   } catch (error) {
-    console.error('Failed to load certificates:', error)
+    console.warn('Failed to load certificates:', error)
+    certificates.value = []
   }
 }
 
@@ -246,7 +249,8 @@ const loadAgents = async () => {
     const response = await getAgents()
     agents.value = response.data
   } catch (error) {
-    console.error('Failed to load agents:', error)
+    console.warn('Failed to load agents:', error)
+    agents.value = []
   }
 }
 

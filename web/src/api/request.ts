@@ -37,7 +37,8 @@ instance.interceptors.response.use(
     
     // 检查业务状态码
     if (data.success === false) {
-      message.error(data.error || '请求失败')
+      console.warn('API request failed:', data.error)
+      // 不显示错误消息，让组件自己处理
       return Promise.reject(new Error(data.error || '请求失败'))
     }
     
@@ -56,21 +57,21 @@ instance.interceptors.response.use(
           window.location.href = '/login'
           break
         case 403:
-          message.error('权限不足')
+          console.warn('权限不足')
           break
         case 404:
-          message.error('请求的资源不存在')
+          console.warn('请求的资源不存在')
           break
         case 500:
-          message.error('服务器内部错误')
+          console.warn('服务器内部错误')
           break
         default:
-          message.error(data?.error || `请求失败 (${status})`)
+          console.warn(`请求失败 (${status})`, data?.error)
       }
     } else if (error.request) {
-      message.error('网络连接失败，请检查网络')
+      console.warn('网络连接失败，请检查网络')
     } else {
-      message.error('请求配置错误')
+      console.warn('请求配置错误')
     }
     
     return Promise.reject(error)

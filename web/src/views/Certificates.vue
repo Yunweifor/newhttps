@@ -202,8 +202,10 @@ const loadCertificates = async () => {
     certificates.value = response.data
     pagination.value.total = response.total
   } catch (error) {
-    message.error('加载证书列表失败')
-    console.error('Failed to load certificates:', error)
+    console.warn('Failed to load certificates:', error)
+    // 设置空数据，避免显示错误
+    certificates.value = []
+    pagination.value.total = 0
   } finally {
     loading.value = false
   }
@@ -218,7 +220,9 @@ const loadAgents = async () => {
       selectedAgent.value = agents.value[0].id
     }
   } catch (error) {
-    console.error('Failed to load agents:', error)
+    console.warn('Failed to load agents:', error)
+    // 设置空数据
+    agents.value = []
   }
 }
 

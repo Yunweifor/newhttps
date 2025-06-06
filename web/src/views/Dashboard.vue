@@ -158,29 +158,49 @@ const recentActivities = ref([
 const loadStats = async () => {
   loading.value = true
   try {
-    // 并行加载所有统计数据
+    // 并行加载所有统计数据，提供默认值避免错误
     const [certsResponse, agentStatsResponse, deploymentStatsResponse] = await Promise.all([
-      getCertificates().catch(() => ({ data: [], total: 0 })),
-      getAgentStats().catch(() => ({ data: { total: 0, active: 0 } })),
-      getDeploymentStats().catch(() => ({ data: { total: 0 } }))
+      getCertificates().catch((error) => {
+        console.warn('Failed to load certificates:', error)
+        return { data: [], total: 0 }
+      }),
+      getAgentStats().catch((error) => {
+        console.warn('Failed to load agent stats:', error)
+        return { data: { total: 0, active: 0 } }
+      }),
+      getDeploymentStats().catch((error) => {
+        console.warn('Failed to load deployment stats:', error)
+        return { data: { total: 0 } }
+      })
     ])
 
     // 计算即将过期的证书数量
     const now = new Date()
     const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
     const expiringSoon = certsResponse.data.filter((cert: any) => {
-      const expiresAt = new Date(cert.expiresAt)
-      return expiresAt <= thirtyDaysFromNow && expiresAt > now
+      try {
+        const expiresAt = new Date(cert.expiresAt)
+        return expiresAt <= thirtyDaysFromNow && expiresAt > now
+      } catch {
+        return false
+      }
     }).length
 
     stats.value = {
-      totalCerts: certsResponse.total,
-      activeAgents: agentStatsResponse.data.active,
-      expiringSoon,
-      deploymentTasks: deploymentStatsResponse.data.total
+      totalCerts: certsResponse.total || 0,
+      activeAgents: agentStatsResponse.data?.active || 0,
+      expiringSoon: expiringSoon || 0,
+      deploymentTasks: deploymentStatsResponse.data?.total || 0
     }
   } catch (error) {
     console.error('Failed to load stats:', error)
+    // 设置默认值，避免页面显示错误
+    stats.value = {
+      totalCerts: 0,
+      activeAgents: 0,
+      expiringSoon: 0,
+      deploymentTasks: 0
+    }
   } finally {
     loading.value = false
   }
