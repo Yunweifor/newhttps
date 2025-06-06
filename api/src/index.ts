@@ -13,8 +13,10 @@ import { agentRoutes } from './routes/agent';
 import { configRoutes } from './routes/config';
 import { deploymentRoutes } from './routes/deployment';
 import { renewalRoutes } from './routes/renewal';
+import { monitoringRoutes } from './routes/monitoring';
 import { Database } from './services/database';
 import { RenewalScheduler } from './services/renewalScheduler';
+import { CertificateMonitor } from './services/certificateMonitor';
 import { logger } from './utils/logger';
 
 // 加载环境变量
@@ -48,6 +50,7 @@ app.use('/api/v1/cert', certRoutes);
 app.use('/api/v1/agent', agentRoutes);
 app.use('/api/v1/deployment', deploymentRoutes);
 app.use('/api/v1/renewal', renewalRoutes);
+app.use('/api/v1/monitoring', monitoringRoutes);
 app.use('/api/v1/config', authMiddleware, configRoutes);
 
 // 错误处理
@@ -70,10 +73,14 @@ async function startServer() {
     // 初始化续期调度器
     await RenewalScheduler.getInstance().initialize();
 
+    // 启动证书监控服务
+    await CertificateMonitor.getInstance().start();
+
     app.listen(PORT, () => {
       logger.info(`NewHTTPS API Server running on port ${PORT}`);
       logger.info(`Health check: http://localhost:${PORT}/health`);
       logger.info('Certificate renewal scheduler started');
+      logger.info('Certificate monitoring service started');
     });
   } catch (error) {
     logger.error('Failed to start server:', error);
