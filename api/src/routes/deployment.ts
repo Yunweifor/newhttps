@@ -1,10 +1,21 @@
 import { Router } from 'express';
 import { Database } from '../services/database';
+import { CertificateDeployment } from '../services/certificateDeployment';
+import { AgentCommunication } from '../services/agentCommunication';
 import { logger } from '../utils/logger';
 import { authMiddleware } from '../middleware/auth';
 import { v4 as uuidv4 } from 'uuid';
 
 const router = Router();
+
+// 获取部署服务实例
+function getDeploymentService(): CertificateDeployment {
+  return CertificateDeployment.getInstance();
+}
+
+function getAgentCommunication(): AgentCommunication {
+  return AgentCommunication.getInstance();
+}
 
 export interface DeploymentTask {
   id: string;
@@ -31,60 +42,28 @@ export interface DeploymentTask {
 router.get('/tasks', authMiddleware, async (req, res) => {
   try {
     const { status, agentId, page = 1, pageSize = 10 } = req.query;
-    
-    // 这里应该从数据库获取真实数据，目前返回模拟数据
-    const mockTasks: DeploymentTask[] = [
-      {
-        id: '1',
-        certificateId: 'cert-1',
-        agentId: 'agent-1',
-        status: 'success',
-        type: 'deploy',
-        target: {
-          type: 'nginx',
-          config: { configPath: '/etc/nginx/sites-enabled' }
-        },
-        progress: 100,
-        logs: ['Task started', 'Certificate deployed', 'Nginx reloaded', 'Task completed'],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        completedAt: new Date().toISOString()
-      },
-      {
-        id: '2',
-        certificateId: 'cert-2',
-        agentId: 'agent-2',
-        status: 'running',
-        type: 'update',
-        target: {
-          type: 'nginx',
-          config: { configPath: '/etc/nginx/sites-enabled' }
-        },
-        progress: 60,
-        logs: ['Task started', 'Certificate updated', 'Reloading nginx...'],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      }
-    ];
+    const offset = (Number(page) - 1) * Number(pageSize);
 
-    // 应用过滤器
-    let filteredTasks = mockTasks;
+    const deploymentService = getDeploymentService();
+    const result = await deploymentService.getAllDeploymentTasks(Number(pageSize), offset);
+
+    // 过滤结果
+    let filteredTasks = result.tasks;
+
     if (status) {
       filteredTasks = filteredTasks.filter(task => task.status === status);
     }
+
     if (agentId) {
       filteredTasks = filteredTasks.filter(task => task.agentId === agentId);
     }
 
-    // 分页
-    const startIndex = (Number(page) - 1) * Number(pageSize);
-    const endIndex = startIndex + Number(pageSize);
-    const paginatedTasks = filteredTasks.slice(startIndex, endIndex);
-
     res.json({
       success: true,
-      data: paginatedTasks,
-      total: filteredTasks.length
+      data: filteredTasks,
+      total: result.total,
+      page: Number(page),
+      pageSize: Number(pageSize)
     });
   } catch (error) {
     logger.error('Failed to get deployment tasks:', error);
@@ -96,80 +75,55 @@ router.get('/tasks', authMiddleware, async (req, res) => {
 });
 
 /**
- * 获取单个部署任务
- * GET /api/v1/deployment/tasks/:taskId
- */
-router.get('/tasks/:taskId', authMiddleware, async (req, res): Promise<any> => {
-  try {
-    const { taskId } = req.params;
-    
-    // 这里应该从数据库获取真实数据
-    const mockTask: DeploymentTask = {
-      id: taskId,
-      certificateId: 'cert-1',
-      agentId: 'agent-1',
-      status: 'success',
-      type: 'deploy',
-      target: {
-        type: 'nginx',
-        config: { configPath: '/etc/nginx/sites-enabled' }
-      },
-      progress: 100,
-      logs: ['Task started', 'Certificate deployed', 'Nginx reloaded', 'Task completed'],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      completedAt: new Date().toISOString()
-    };
-
-    res.json({
-      success: true,
-      data: mockTask
-    });
-  } catch (error) {
-    logger.error(`Failed to get deployment task ${req.params.taskId}:`, error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch deployment task'
-    });
-  }
-});
-
-/**
  * 创建部署任务
  * POST /api/v1/deployment/tasks
  */
 router.post('/tasks', authMiddleware, async (req, res): Promise<any> => {
   try {
-    const { certificateId, agentId, type, target } = req.body;
+    const { certificateId, agentId, targetType, targetConfig } = req.body;
 
     // 验证必需参数
-    if (!certificateId || !agentId || !type || !target) {
+    if (!certificateId || !agentId || !targetType || !targetConfig) {
       return res.status(400).json({
         success: false,
-        error: 'certificateId, agentId, type, and target are required'
+        error: 'certificateId, agentId, targetType, and targetConfig are required'
       });
     }
 
-    // 创建新任务
-    const newTask: DeploymentTask = {
-      id: uuidv4(),
+    // 验证证书存在
+    const db = Database.getInstance();
+    const certificate = await db.getCertificate(certificateId);
+    if (!certificate) {
+      return res.status(404).json({
+        success: false,
+        error: 'Certificate not found'
+      });
+    }
+
+    // 验证Agent存在
+    const agent = await db.getAgent(agentId);
+    if (!agent) {
+      return res.status(404).json({
+        success: false,
+        error: 'Agent not found'
+      });
+    }
+
+    // 创建部署任务
+    const deploymentService = getDeploymentService();
+    const task = await deploymentService.createDeploymentTask(
       certificateId,
       agentId,
-      status: 'pending',
-      type,
-      target,
-      progress: 0,
-      logs: ['Task created'],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
+      targetType,
+      targetConfig
+    );
 
-    // 这里应该保存到数据库并启动部署流程
-    logger.info(`Created deployment task: ${newTask.id}`);
+    logger.info(`Created deployment task: ${task.id}`);
 
     res.json({
       success: true,
-      data: newTask
+      data: task,
+      message: 'Deployment task created successfully'
     });
   } catch (error) {
     logger.error('Failed to create deployment task:', error);
@@ -181,15 +135,46 @@ router.post('/tasks', authMiddleware, async (req, res): Promise<any> => {
 });
 
 /**
+ * 获取部署任务详情
+ * GET /api/v1/deployment/tasks/:taskId
+ */
+router.get('/tasks/:taskId', authMiddleware, async (req, res): Promise<any> => {
+  try {
+    const { taskId } = req.params;
+
+    const deploymentService = getDeploymentService();
+    const task = await deploymentService.getDeploymentTask(taskId);
+
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        error: 'Deployment task not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: task
+    });
+  } catch (error) {
+    logger.error(`Failed to get deployment task ${req.params.taskId}:`, error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch deployment task'
+    });
+  }
+});
+
+/**
  * 取消部署任务
  * POST /api/v1/deployment/tasks/:taskId/cancel
  */
-router.post('/tasks/:taskId/cancel', authMiddleware, async (req, res) => {
+router.post('/tasks/:taskId/cancel', authMiddleware, async (req, res): Promise<any> => {
   try {
     const { taskId } = req.params;
-    
-    // 这里应该实际取消任务
-    logger.info(`Cancelled deployment task: ${taskId}`);
+
+    const deploymentService = getDeploymentService();
+    await deploymentService.cancelDeploymentTask(taskId);
 
     res.json({
       success: true,
@@ -208,38 +193,23 @@ router.post('/tasks/:taskId/cancel', authMiddleware, async (req, res) => {
  * 重试部署任务
  * POST /api/v1/deployment/tasks/:taskId/retry
  */
-router.post('/tasks/:taskId/retry', authMiddleware, async (req, res) => {
+router.post('/tasks/:taskId/retry', authMiddleware, async (req, res): Promise<any> => {
   try {
     const { taskId } = req.params;
-    
-    // 这里应该实际重试任务
-    const retryTask: DeploymentTask = {
-      id: taskId,
-      certificateId: 'cert-1',
-      agentId: 'agent-1',
-      status: 'pending',
-      type: 'deploy',
-      target: {
-        type: 'nginx',
-        config: { configPath: '/etc/nginx/sites-enabled' }
-      },
-      progress: 0,
-      logs: ['Task retried'],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
 
-    logger.info(`Retried deployment task: ${taskId}`);
+    const deploymentService = getDeploymentService();
+    const retryTask = await deploymentService.retryDeploymentTask(taskId);
 
     res.json({
       success: true,
-      data: retryTask
+      data: retryTask,
+      message: 'Task retry initiated successfully'
     });
   } catch (error) {
     logger.error(`Failed to retry deployment task ${req.params.taskId}:`, error);
     res.status(500).json({
       success: false,
-      error: 'Failed to retry deployment task'
+      error: error instanceof Error ? error.message : 'Failed to retry deployment task'
     });
   }
 });
@@ -274,24 +244,8 @@ router.delete('/tasks/:taskId', authMiddleware, async (req, res) => {
  */
 router.get('/stats', authMiddleware, async (req, res) => {
   try {
-    // 这里应该从数据库获取真实统计数据
-    const stats = {
-      total: 10,
-      pending: 2,
-      running: 1,
-      success: 6,
-      failed: 1,
-      byAgent: {
-        'agent-1': 5,
-        'agent-2': 3,
-        'agent-3': 2
-      },
-      byType: {
-        deploy: 7,
-        update: 2,
-        remove: 1
-      }
-    };
+    const deploymentService = getDeploymentService();
+    const stats = await deploymentService.getDeploymentStats();
 
     res.json({
       success: true,

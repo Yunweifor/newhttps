@@ -37,6 +37,22 @@ export interface RenewalSchedule {
   updated_at: string;
 }
 
+export interface DeploymentTask {
+  id: string;
+  certificate_id: string;
+  agent_id: string;
+  target_type: string;
+  target_config: string;
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+  progress: number;
+  started_at?: string;
+  completed_at?: string;
+  error?: string;
+  logs: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Certificate {
   id: string;
   domains: string;
@@ -162,6 +178,26 @@ export class Database {
       )
     `;
 
+    const createDeploymentTasksTable = `
+      CREATE TABLE IF NOT EXISTS deployment_tasks (
+        id TEXT PRIMARY KEY,
+        certificate_id TEXT NOT NULL,
+        agent_id TEXT NOT NULL,
+        target_type TEXT NOT NULL,
+        target_config TEXT NOT NULL,
+        status TEXT DEFAULT 'pending',
+        progress INTEGER DEFAULT 0,
+        started_at DATETIME,
+        completed_at DATETIME,
+        error TEXT,
+        logs TEXT DEFAULT '[]',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (certificate_id) REFERENCES certificates (id),
+        FOREIGN KEY (agent_id) REFERENCES agents (id)
+      )
+    `;
+
     return new Promise((resolve, reject) => {
       if (!this.db) {
         reject(new Error('Database not initialized'));
@@ -196,6 +232,14 @@ export class Database {
         this.db!.run(createRenewalSchedulesTable, (err) => {
           if (err) {
             logger.error('Failed to create renewal schedules table:', err);
+            reject(err);
+            return;
+          }
+        });
+
+        this.db!.run(createDeploymentTasksTable, (err) => {
+          if (err) {
+            logger.error('Failed to create deployment tasks table:', err);
             reject(err);
             return;
           }
@@ -723,6 +767,171 @@ export class Database {
           reject(err);
         } else {
           logger.info(`Agent deleted: ${agentId}`);
+          resolve();
+        }
+      });
+    });
+  }
+
+
+
+  /**
+   * 保存部署任务
+   */
+  async saveDeploymentTask(task: Omit<DeploymentTask, 'created_at' | 'updated_at'>): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
+
+      const sql = `
+        INSERT OR REPLACE INTO deployment_tasks
+        (id, certificate_id, agent_id, target_type, target_config, status, progress,
+         started_at, completed_at, error, logs)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `;
+
+      this.db.run(sql, [
+        task.id,
+        task.certificate_id,
+        task.agent_id,
+        task.target_type,
+        task.target_config,
+        task.status,
+        task.progress,
+        task.started_at || null,
+        task.completed_at || null,
+        task.error || null,
+        task.logs
+      ], (err) => {
+        if (err) {
+          logger.error('Failed to save deployment task:', err);
+          reject(err);
+        } else {
+          logger.info(`Deployment task saved: ${task.id}`);
+          resolve();
+        }
+      });
+    });
+  }
+
+  /**
+   * 获取部署任务
+   */
+  async getDeploymentTask(taskId: string): Promise<DeploymentTask | null> {
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
+
+      const sql = 'SELECT * FROM deployment_tasks WHERE id = ?';
+
+      this.db.get(sql, [taskId], (err, row: DeploymentTask) => {
+        if (err) {
+          logger.error('Failed to get deployment task:', err);
+          reject(err);
+        } else {
+          resolve(row || null);
+        }
+      });
+    });
+  }
+
+  /**
+   * 获取所有部署任务
+   */
+  async getAllDeploymentTasks(limit: number = 50, offset: number = 0): Promise<{
+    tasks: DeploymentTask[];
+    total: number;
+  }> {
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
+
+      // 获取总数
+      const countSql = 'SELECT COUNT(*) as total FROM deployment_tasks';
+      this.db.get(countSql, [], (err, countRow: any) => {
+        if (err) {
+          logger.error('Failed to count deployment tasks:', err);
+          reject(err);
+          return;
+        }
+
+        // 获取任务列表
+        const sql = 'SELECT * FROM deployment_tasks ORDER BY created_at DESC LIMIT ? OFFSET ?';
+        this.db!.all(sql, [limit, offset], (err, rows: DeploymentTask[]) => {
+          if (err) {
+            logger.error('Failed to get deployment tasks:', err);
+            reject(err);
+          } else {
+            resolve({
+              tasks: rows || [],
+              total: countRow.total || 0
+            });
+          }
+        });
+      });
+    });
+  }
+
+  /**
+   * 更新部署任务
+   */
+  async updateDeploymentTask(task: DeploymentTask): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
+
+      const sql = `
+        UPDATE deployment_tasks SET
+        status = ?, progress = ?, started_at = ?, completed_at = ?,
+        error = ?, logs = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `;
+
+      this.db!.run(sql, [
+        task.status,
+        task.progress,
+        task.started_at || null,
+        task.completed_at || null,
+        task.error || null,
+        task.logs,
+        task.id
+      ], (err) => {
+        if (err) {
+          logger.error('Failed to update deployment task:', err);
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
+    });
+  }
+
+  /**
+   * 删除部署任务
+   */
+  async deleteDeploymentTask(taskId: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
+
+      const sql = 'DELETE FROM deployment_tasks WHERE id = ?';
+
+      this.db.run(sql, [taskId], (err) => {
+        if (err) {
+          logger.error('Failed to delete deployment task:', err);
+          reject(err);
+        } else {
+          logger.info(`Deployment task deleted: ${taskId}`);
           resolve();
         }
       });

@@ -17,6 +17,7 @@ import { monitoringRoutes } from './routes/monitoring';
 import { Database } from './services/database';
 import { RenewalScheduler } from './services/renewalScheduler';
 import { CertificateMonitor } from './services/certificateMonitor';
+import { CertificateDeployment } from './services/certificateDeployment';
 import { logger } from './utils/logger';
 
 // 加载环境变量
@@ -76,11 +77,15 @@ async function startServer() {
     // 启动证书监控服务
     await CertificateMonitor.getInstance().start();
 
+    // 初始化证书部署服务
+    await CertificateDeployment.getInstance().initialize();
+
     app.listen(PORT, () => {
       logger.info(`NewHTTPS API Server running on port ${PORT}`);
       logger.info(`Health check: http://localhost:${PORT}/health`);
       logger.info('Certificate renewal scheduler started');
       logger.info('Certificate monitoring service started');
+      logger.info('Certificate deployment service started');
     });
   } catch (error) {
     logger.error('Failed to start server:', error);
