@@ -234,16 +234,87 @@ router.post('/:agentId/heartbeat', async (req, res): Promise<any> => {
 });
 
 /**
+ * 更新 Agent 信息
+ * PUT /api/v1/agent/:agentId
+ */
+router.put('/:agentId', authMiddleware, async (req, res): Promise<any> => {
+  try {
+    const { agentId } = req.params;
+    const { hostname, os, nginx_version, nginx_config, version } = req.body;
+
+    const db = Database.getInstance();
+    const agent = await db.getAgent(agentId);
+
+    if (!agent) {
+      return res.status(404).json({
+        success: false,
+        error: 'Agent not found'
+      });
+    }
+
+    // 更新Agent信息
+    const updatedAgent = {
+      ...agent,
+      hostname: hostname || agent.hostname,
+      os: os || agent.os,
+      nginx_version: nginx_version || agent.nginx_version,
+      nginx_config: nginx_config || agent.nginx_config,
+      version: version || agent.version
+    };
+
+    await db.updateAgent(updatedAgent);
+
+    // 记录更新活动
+    await db.logAgentActivity(agentId, 'update', {
+      updated_fields: { hostname, os, nginx_version, nginx_config, version },
+      updated_by: 'admin'
+    });
+
+    logger.info(`Agent updated: ${agentId}`);
+
+    res.json({
+      success: true,
+      data: updatedAgent,
+      message: 'Agent updated successfully'
+    });
+  } catch (error) {
+    logger.error(`Failed to update agent ${req.params.agentId}:`, error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to update agent'
+    });
+  }
+});
+
+/**
  * 删除 Agent
  * DELETE /api/v1/agent/:agentId
  */
-router.delete('/:agentId', authMiddleware, async (req, res) => {
+router.delete('/:agentId', authMiddleware, async (req, res): Promise<any> => {
   try {
     const { agentId } = req.params;
-    
-    // 这里可以添加删除逻辑
-    // 目前只是标记为非活跃状态
-    
+
+    const db = Database.getInstance();
+    const agent = await db.getAgent(agentId);
+
+    if (!agent) {
+      return res.status(404).json({
+        success: false,
+        error: 'Agent not found'
+      });
+    }
+
+    // 记录删除活动
+    await db.logAgentActivity(agentId, 'delete', {
+      deleted_by: 'admin', // 实际应用中应该从认证信息获取
+      deleted_at: new Date().toISOString()
+    });
+
+    // 删除Agent
+    await db.deleteAgent(agentId);
+
+    logger.info(`Agent deleted: ${agentId}`);
+
     res.json({
       success: true,
       message: 'Agent deleted successfully'

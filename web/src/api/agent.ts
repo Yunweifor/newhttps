@@ -65,6 +65,17 @@ export const sendHeartbeat = (agentId: string, data: {
   return request.post(`/api/v1/agent/${agentId}/heartbeat`, data)
 }
 
+// 更新Agent
+export const updateAgent = (agentId: string, data: {
+  hostname?: string
+  os?: string
+  nginx_version?: string
+  nginx_config?: string
+  version?: string
+}): Promise<AgentResponse> => {
+  return request.put(`/api/v1/agent/${agentId}`, data)
+}
+
 // 删除Agent
 export const deleteAgent = (agentId: string): Promise<{ success: boolean }> => {
   return request.delete(`/api/v1/agent/${agentId}`)

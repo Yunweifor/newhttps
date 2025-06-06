@@ -671,6 +671,65 @@ export class Database {
   }
 
   /**
+   * 更新Agent信息
+   */
+  async updateAgent(agent: Agent): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
+
+      const sql = `
+        UPDATE agents SET
+        hostname = ?, os = ?, nginx_version = ?, nginx_config = ?, version = ?
+        WHERE id = ?
+      `;
+
+      this.db.run(sql, [
+        agent.hostname,
+        agent.os,
+        agent.nginx_version,
+        agent.nginx_config,
+        agent.version,
+        agent.id
+      ], (err) => {
+        if (err) {
+          logger.error('Failed to update agent:', err);
+          reject(err);
+        } else {
+          logger.info(`Agent updated: ${agent.id}`);
+          resolve();
+        }
+      });
+    });
+  }
+
+  /**
+   * 删除Agent
+   */
+  async deleteAgent(agentId: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
+
+      const sql = 'DELETE FROM agents WHERE id = ?';
+
+      this.db.run(sql, [agentId], (err) => {
+        if (err) {
+          logger.error('Failed to delete agent:', err);
+          reject(err);
+        } else {
+          logger.info(`Agent deleted: ${agentId}`);
+          resolve();
+        }
+      });
+    });
+  }
+
+  /**
    * 关闭数据库连接
    */
   async close(): Promise<void> {
