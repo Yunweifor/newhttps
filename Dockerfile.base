@@ -1,0 +1,64 @@
+# NewHTTPS Base Image - Multi-stage Docker Build Strategy
+# Stage 1: Base image with system dependencies and stable components
+FROM node:18-alpine AS base
+
+# Set build arguments for cache busting
+ARG BUILD_DATE
+ARG VERSION=1.0.0
+
+# Add metadata
+LABEL maintainer="NewHTTPS Team"
+LABEL version="${VERSION}"
+LABEL build-date="${BUILD_DATE}"
+LABEL description="NewHTTPS Base Image with System Dependencies"
+
+# Install system dependencies that rarely change
+RUN apk add --no-cache \
+    curl \
+    wget \
+    bash \
+    openssl \
+    ca-certificates \
+    git \
+    python3 \
+    make \
+    g++ \
+    sqlite \
+    && rm -rf /var/cache/apk/*
+
+# Create application user and directories
+RUN addgroup -g 1001 -S newhttps && \
+    adduser -S newhttps -u 1001 -G newhttps
+
+# Create standard application directories
+RUN mkdir -p /app/data \
+             /app/logs \
+             /app/uploads \
+             /app/ssl \
+             /app/backups \
+             /app/temp \
+    && chown -R newhttps:newhttps /app
+
+# Set working directory
+WORKDIR /app
+
+# Install global npm packages that are commonly used
+RUN npm install -g \
+    pm2 \
+    typescript \
+    ts-node \
+    && npm cache clean --force
+
+# Create health check script
+RUN echo '#!/bin/bash\ncurl -f http://localhost:${API_PORT:-3000}/health || exit 1' > /usr/local/bin/health-check.sh \
+    && chmod +x /usr/local/bin/health-check.sh
+
+# Set environment variables for base image
+ENV NODE_ENV=production
+ENV PATH="/app/node_modules/.bin:$PATH"
+
+# Switch to application user
+USER newhttps
+
+# Default command (will be overridden in application images)
+CMD ["echo", "NewHTTPS Base Image - Use application-specific images"]

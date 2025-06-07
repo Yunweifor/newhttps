@@ -1,0 +1,69 @@
+# NewHTTPS Web Interface - Optimized Multi-stage Dockerfile
+# Stage 1: Use base image for Node.js build environment
+FROM newhttps-base:latest AS base-builder
+
+# Switch to root for package installation
+USER root
+
+# Stage 2: Dependencies installation (cached layer)
+FROM base-builder AS dependencies
+
+# Copy package files for dependency caching
+COPY --chown=newhttps:newhttps package*.json ./
+
+# Install dependencies
+RUN npm ci && npm cache clean --force
+
+# Stage 3: Build stage
+FROM dependencies AS builder
+
+# Copy source code
+COPY --chown=newhttps:newhttps . .
+
+# Build Vue.js application
+RUN npm run build
+
+# Stage 4: Nginx base for production
+FROM nginx:alpine AS nginx-base
+
+# Install additional tools for health checks
+RUN apk add --no-cache wget curl
+
+# Create nginx user directories and set permissions
+RUN mkdir -p /var/cache/nginx/client_temp \
+             /var/log/nginx \
+             /var/run \
+    && touch /var/run/nginx.pid \
+    && chown -R nginx:nginx /var/cache/nginx \
+    && chown -R nginx:nginx /var/log/nginx \
+    && chown -R nginx:nginx /var/run/nginx.pid
+
+# Stage 5: Production runtime image
+FROM nginx-base AS production
+
+# Copy built application from builder stage
+COPY --from=builder --chown=nginx:nginx /app/dist /usr/share/nginx/html
+
+# Copy nginx configuration
+COPY --chown=nginx:nginx nginx.conf /etc/nginx/nginx.conf
+
+# Set proper permissions
+RUN chown -R nginx:nginx /usr/share/nginx/html \
+    && chmod -R 755 /usr/share/nginx/html
+
+# Create health check script
+RUN echo '#!/bin/sh\nwget --no-verbose --tries=1 --spider http://localhost/ || exit 1' > /usr/local/bin/web-health-check.sh \
+    && chmod +x /usr/local/bin/web-health-check.sh
+
+# Switch to nginx user
+USER nginx
+
+# Expose port
+EXPOSE 80
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+    CMD /usr/local/bin/web-health-check.sh
+
+# Start nginx
+CMD ["nginx", "-g", "daemon off;"]

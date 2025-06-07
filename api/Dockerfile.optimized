@@ -1,0 +1,56 @@
+# NewHTTPS API - Optimized Multi-stage Dockerfile
+# Stage 1: Use base image with system dependencies
+FROM newhttps-base:latest AS base
+
+# Stage 2: Dependencies installation (cached layer)
+FROM base AS dependencies
+
+# Switch to root for package installation
+USER root
+
+# Copy package files for dependency caching
+COPY --chown=newhttps:newhttps package*.json ./
+
+# Install all dependencies (including dev dependencies for build)
+RUN npm ci --include=dev && npm cache clean --force
+
+# Stage 3: Build stage
+FROM dependencies AS builder
+
+# Copy source code
+COPY --chown=newhttps:newhttps . .
+
+# Build TypeScript application
+RUN npm run build
+
+# Remove dev dependencies and reinstall only production dependencies
+RUN npm ci --only=production && npm cache clean --force
+
+# Stage 4: Production runtime image
+FROM base AS production
+
+# Copy built application from builder stage
+COPY --from=builder --chown=newhttps:newhttps /app/dist ./dist
+COPY --from=builder --chown=newhttps:newhttps /app/node_modules ./node_modules
+COPY --from=builder --chown=newhttps:newhttps /app/package*.json ./
+
+# Copy configuration files
+COPY --chown=newhttps:newhttps tsconfig.json ./
+
+# Set environment variables
+ENV NODE_ENV=production
+ENV API_PORT=3000
+ENV JWT_SECRET=newhttps-default-secret
+
+# Expose port
+EXPOSE 3000
+
+# Health check using the base image script
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD /usr/local/bin/health-check.sh
+
+# Start application with PM2 for better process management
+CMD ["pm2-runtime", "start", "dist/index.js", "--name", "newhttps-api"]
+
+# Alternative lightweight startup (uncomment if PM2 is not needed)
+# CMD ["node", "dist/index.js"]

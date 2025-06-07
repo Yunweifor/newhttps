@@ -1,0 +1,126 @@
+# NewHTTPS - Development Docker Compose Configuration
+version: '3.8'
+
+services:
+  # Development API Service with Hot Reload
+  newhttps-api-dev:
+    build:
+      context: ./api
+      dockerfile: Dockerfile.optimized
+      target: dependencies  # Stop at dependencies stage for development
+      args:
+        - BUILD_DATE=${BUILD_DATE:-$(date -u +'%Y-%m-%dT%H:%M:%SZ')}
+        - VERSION=${VERSION:-dev}
+    image: newhttps-api:dev
+    container_name: newhttps-api-dev
+    restart: unless-stopped
+    ports:
+      - "${API_PORT:-3000}:3000"
+      - "9229:9229"  # Node.js debug port
+    volumes:
+      # Mount source code for hot reload
+      - ./api/src:/app/src:ro
+      - ./api/package*.json:/app/
+      - ./api/tsconfig.json:/app/tsconfig.json:ro
+      # Persistent data volumes
+      - newhttps-data-dev:/app/data
+      - newhttps-logs-dev:/app/logs
+      - newhttps-uploads-dev:/app/uploads
+    environment:
+      - NODE_ENV=development
+      - JWT_SECRET=${JWT_SECRET:-newhttps-dev-secret}
+      - API_PORT=${API_PORT:-3000}
+      - DB_PATH=/app/data/newhttps.db
+      - LOG_LEVEL=debug
+      - LOG_PATH=/app/logs
+    networks:
+      - newhttps-dev-network
+    command: ["npm", "run", "dev"]
+    depends_on:
+      - newhttps-base
+    labels:
+      - "com.newhttps.service=api"
+      - "com.newhttps.environment=development"
+
+  # Development Web Interface with Hot Reload
+  newhttps-web-dev:
+    build:
+      context: ./web
+      dockerfile: Dockerfile.optimized
+      target: dependencies  # Stop at dependencies stage for development
+      args:
+        - BUILD_DATE=${BUILD_DATE:-$(date -u +'%Y-%m-%dT%H:%M:%SZ')}
+        - VERSION=${VERSION:-dev}
+    image: newhttps-web:dev
+    container_name: newhttps-web-dev
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-8080}:5173"  # Vite dev server port
+    volumes:
+      # Mount source code for hot reload
+      - ./web/src:/app/src:ro
+      - ./web/public:/app/public:ro
+      - ./web/package*.json:/app/
+      - ./web/vite.config.ts:/app/vite.config.ts:ro
+      - ./web/tsconfig.json:/app/tsconfig.json:ro
+      - ./web/index.html:/app/index.html:ro
+    environment:
+      - NODE_ENV=development
+      - VITE_API_BASE_URL=http://localhost:${API_PORT:-3000}
+    networks:
+      - newhttps-dev-network
+    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+    depends_on:
+      - newhttps-api-dev
+    labels:
+      - "com.newhttps.service=web"
+      - "com.newhttps.environment=development"
+
+  # Base Image for Development
+  newhttps-base:
+    build:
+      context: .
+      dockerfile: Dockerfile.base
+      args:
+        - BUILD_DATE=${BUILD_DATE:-$(date -u +'%Y-%m-%dT%H:%M:%SZ')}
+        - VERSION=${VERSION:-dev}
+    image: newhttps-base:dev
+    container_name: newhttps-base-dev
+    command: ["echo", "Development base image built successfully"]
+    labels:
+      - "com.newhttps.service=base"
+      - "com.newhttps.environment=development"
+
+  # Development Database Browser (Optional)
+  sqlite-browser:
+    image: coleifer/sqlite-web
+    container_name: newhttps-sqlite-browser
+    restart: unless-stopped
+    ports:
+      - "8081:8080"
+    volumes:
+      - newhttps-data-dev:/data
+    environment:
+      - SQLITE_DATABASE=/data/newhttps.db
+    networks:
+      - newhttps-dev-network
+    profiles:
+      - debug
+    depends_on:
+      - newhttps-api-dev
+    labels:
+      - "com.newhttps.service=database-browser"
+      - "com.newhttps.environment=development"
+
+networks:
+  newhttps-dev-network:
+    driver: bridge
+    name: newhttps-dev-network
+
+volumes:
+  newhttps-data-dev:
+    name: newhttps-data-dev
+  newhttps-logs-dev:
+    name: newhttps-logs-dev
+  newhttps-uploads-dev:
+    name: newhttps-uploads-dev

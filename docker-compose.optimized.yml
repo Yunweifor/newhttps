@@ -1,0 +1,147 @@
+# NewHTTPS - Optimized Docker Compose with Multi-stage Build Strategy
+version: '3.8'
+
+services:
+  # NewHTTPS API Service - Optimized Build
+  newhttps-api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile.optimized
+      target: production
+      args:
+        - BUILD_DATE=${BUILD_DATE:-$(date -u +'%Y-%m-%dT%H:%M:%SZ')}
+        - VERSION=${VERSION:-1.0.0}
+      cache_from:
+        - newhttps-base:latest
+        - newhttps-api:dependencies
+        - newhttps-api:builder
+    image: newhttps-api:${VERSION:-latest}
+    container_name: newhttps-api-optimized
+    restart: unless-stopped
+    ports:
+      - "${API_PORT:-3000}:3000"
+    volumes:
+      # Persistent data volumes
+      - newhttps-data:/app/data
+      - newhttps-logs:/app/logs
+      - newhttps-uploads:/app/uploads
+      - newhttps-ssl:/app/ssl
+      - newhttps-backups:/app/backups
+      # Configuration volume (optional)
+      - ./config:/app/config:ro
+    environment:
+      - NODE_ENV=${NODE_ENV:-production}
+      - JWT_SECRET=${JWT_SECRET:-newhttps-default-secret}
+      - API_PORT=${API_PORT:-3000}
+      - DB_PATH=/app/data/newhttps.db
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - LOG_PATH=/app/logs
+      - SSL_CERT_PATH=/app/ssl
+      - BACKUP_PATH=/app/backups
+      - UPLOAD_PATH=/app/uploads
+      - CORS_ORIGIN=${CORS_ORIGIN:-*}
+      - RATE_LIMIT_WINDOW_MS=${RATE_LIMIT_WINDOW_MS:-900000}
+      - RATE_LIMIT_MAX_REQUESTS=${RATE_LIMIT_MAX_REQUESTS:-100}
+      - UPLOAD_MAX_SIZE=${UPLOAD_MAX_SIZE:-10485760}
+    networks:
+      - newhttps-network
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/health-check.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    depends_on:
+      - newhttps-base
+    labels:
+      - "com.newhttps.service=api"
+      - "com.newhttps.version=${VERSION:-1.0.0}"
+
+  # NewHTTPS Web Interface - Optimized Build
+  newhttps-web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile.optimized
+      target: production
+      args:
+        - BUILD_DATE=${BUILD_DATE:-$(date -u +'%Y-%m-%dT%H:%M:%SZ')}
+        - VERSION=${VERSION:-1.0.0}
+      cache_from:
+        - newhttps-base:latest
+        - newhttps-web:dependencies
+        - newhttps-web:builder
+    image: newhttps-web:${VERSION:-latest}
+    container_name: newhttps-web-optimized
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    environment:
+      - NODE_ENV=${NODE_ENV:-production}
+    networks:
+      - newhttps-network
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/web-health-check.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    depends_on:
+      - newhttps-api
+    labels:
+      - "com.newhttps.service=web"
+      - "com.newhttps.version=${VERSION:-1.0.0}"
+
+  # Base Image Service (for dependency management)
+  newhttps-base:
+    build:
+      context: .
+      dockerfile: Dockerfile.base
+      args:
+        - BUILD_DATE=${BUILD_DATE:-$(date -u +'%Y-%m-%dT%H:%M:%SZ')}
+        - VERSION=${VERSION:-1.0.0}
+    image: newhttps-base:${VERSION:-latest}
+    container_name: newhttps-base
+    command: ["echo", "Base image built successfully"]
+    labels:
+      - "com.newhttps.service=base"
+      - "com.newhttps.version=${VERSION:-1.0.0}"
+
+  # Nginx Reverse Proxy (Optional - for production)
+  nginx-proxy:
+    image: nginx:alpine
+    container_name: newhttps-nginx-proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - newhttps-ssl:/etc/nginx/ssl:ro
+      - ./nginx/logs:/var/log/nginx
+    depends_on:
+      - newhttps-api
+      - newhttps-web
+    networks:
+      - newhttps-network
+    profiles:
+      - production
+    labels:
+      - "com.newhttps.service=proxy"
+      - "com.newhttps.version=${VERSION:-1.0.0}"
+
+networks:
+  newhttps-network:
+    driver: bridge
+    name: newhttps-network
+
+volumes:
+  newhttps-data:
+    name: newhttps-data
+  newhttps-logs:
+    name: newhttps-logs
+  newhttps-uploads:
+    name: newhttps-uploads
+  newhttps-ssl:
+    name: newhttps-ssl
+  newhttps-backups:
+    name: newhttps-backups
