@@ -422,4 +422,173 @@ MIIFakeIntermediateCertificate...
     // 实际实现需要轮询挑战状态直到完成
     await new Promise(resolve => setTimeout(resolve, 1000)); // 模拟等待
   }
+
+  /**
+   * 验证域名所有权（新增功能）
+   */
+  async validateDomain(domain: string): Promise<{ valid: boolean; error?: string; details?: any }> {
+    logger.info(`Validating domain ownership: ${domain}`);
+
+    try {
+      // 1. DNS 解析验证
+      const dnsValid = await this.validateDNS(domain);
+      if (!dnsValid.valid) {
+        return { valid: false, error: 'DNS resolution failed', details: dnsValid };
+      }
+
+      // 2. HTTP 可达性验证
+      const httpValid = await this.validateHTTP(domain);
+      if (!httpValid.valid) {
+        return { valid: false, error: 'HTTP accessibility failed', details: httpValid };
+      }
+
+      // 3. 域名格式验证
+      const formatValid = this.validateDomainFormat(domain);
+      if (!formatValid.valid) {
+        return { valid: false, error: 'Invalid domain format', details: formatValid };
+      }
+
+      logger.info(`Domain validation successful: ${domain}`);
+      return { valid: true, details: { dns: dnsValid, http: httpValid, format: formatValid } };
+
+    } catch (error) {
+      logger.error(`Domain validation failed for ${domain}:`, error);
+      return {
+        valid: false,
+        error: error instanceof Error ? error.message : 'Unknown validation error',
+        details: { error }
+      };
+    }
+  }
+
+  /**
+   * DNS 解析验证
+   */
+  private async validateDNS(domain: string): Promise<{ valid: boolean; records?: any; error?: string }> {
+    try {
+      const dns = require('dns').promises;
+
+      // 查询 A 记录
+      const aRecords = await dns.resolve4(domain).catch(() => []);
+
+      // 查询 AAAA 记录（IPv6）
+      const aaaaRecords = await dns.resolve6(domain).catch(() => []);
+
+      // 查询 CNAME 记录
+      const cnameRecords = await dns.resolveCname(domain).catch(() => []);
+
+      const hasRecords = aRecords.length > 0 || aaaaRecords.length > 0 || cnameRecords.length > 0;
+
+      return {
+        valid: hasRecords,
+        records: {
+          a: aRecords,
+          aaaa: aaaaRecords,
+          cname: cnameRecords
+        },
+        error: hasRecords ? undefined : 'No DNS records found'
+      };
+    } catch (error) {
+      return {
+        valid: false,
+        error: error instanceof Error ? error.message : 'DNS lookup failed'
+      };
+    }
+  }
+
+  /**
+   * HTTP 可达性验证
+   */
+  private async validateHTTP(domain: string): Promise<{ valid: boolean; status?: number; error?: string }> {
+    try {
+      // 尝试 HTTPS 连接
+      const httpsResult = await this.testHttpConnection(domain, 443, true);
+      if (httpsResult.valid) {
+        return httpsResult;
+      }
+
+      // 尝试 HTTP 连接
+      const httpResult = await this.testHttpConnection(domain, 80, false);
+      return httpResult;
+
+    } catch (error) {
+      return {
+        valid: false,
+        error: error instanceof Error ? error.message : 'HTTP connection failed'
+      };
+    }
+  }
+
+  /**
+   * 测试 HTTP 连接
+   */
+  private async testHttpConnection(domain: string, port: number, secure: boolean): Promise<{ valid: boolean; status?: number; error?: string }> {
+    return new Promise((resolve) => {
+      const module = secure ? require('https') : require('http');
+
+      const req = module.request({
+        hostname: domain,
+        port: port,
+        path: '/',
+        method: 'HEAD',
+        timeout: 5000,
+        rejectUnauthorized: false // 允许自签名证书
+      }, (res: any) => {
+        resolve({
+          valid: true,
+          status: res.statusCode
+        });
+      });
+
+      req.on('error', (error: any) => {
+        resolve({
+          valid: false,
+          error: error.message
+        });
+      });
+
+      req.on('timeout', () => {
+        req.destroy();
+        resolve({
+          valid: false,
+          error: 'Connection timeout'
+        });
+      });
+
+      req.end();
+    });
+  }
+
+  /**
+   * 域名格式验证
+   */
+  private validateDomainFormat(domain: string): { valid: boolean; error?: string } {
+    // 基本格式检查
+    const domainRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+
+    if (!domainRegex.test(domain)) {
+      return { valid: false, error: 'Invalid domain format' };
+    }
+
+    // 长度检查
+    if (domain.length > 253) {
+      return { valid: false, error: 'Domain name too long' };
+    }
+
+    // 标签长度检查
+    const labels = domain.split('.');
+    for (const label of labels) {
+      if (label.length > 63) {
+        return { valid: false, error: 'Domain label too long' };
+      }
+    }
+
+    // 禁止的域名
+    const forbiddenDomains = ['localhost', '127.0.0.1', '0.0.0.0'];
+    if (forbiddenDomains.includes(domain.toLowerCase())) {
+      return { valid: false, error: 'Forbidden domain' };
+    }
+
+    return { valid: true };
+  }
 }

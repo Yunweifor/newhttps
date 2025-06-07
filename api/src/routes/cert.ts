@@ -105,7 +105,7 @@ router.get('/list', authMiddleware, async (req, res) => {
  */
 router.post('/create', authMiddleware, async (req, res): Promise<any> => {
   try {
-    const { domains, ca, email, challengeType, autoRenew, renewDays } = req.body;
+    const { domains, ca, email, challengeType, autoRenew, renewDays, skipValidation = false } = req.body;
 
     // 验证必需参数
     if (!domains || !Array.isArray(domains) || domains.length === 0) {
@@ -127,6 +127,43 @@ router.post('/create', authMiddleware, async (req, res): Promise<any> => {
         success: false,
         error: 'email is required'
       });
+    }
+
+    // 域名验证（除非明确跳过或在开发环境）
+    if (!skipValidation && process.env.NODE_ENV === 'production') {
+      logger.info('Validating domains before certificate creation...');
+
+      const { AcmeClient } = await import('../services/acmeClient');
+      const acmeClient = new AcmeClient();
+      await acmeClient.initialize();
+
+      const validationResults = [];
+      let hasInvalidDomains = false;
+
+      for (const domain of domains) {
+        const validation = await acmeClient.validateDomain(domain);
+        validationResults.push({
+          domain,
+          valid: validation.valid,
+          error: validation.error,
+          details: validation.details
+        });
+
+        if (!validation.valid) {
+          hasInvalidDomains = true;
+          logger.warn(`Domain validation failed: ${domain} - ${validation.error}`);
+        }
+      }
+
+      if (hasInvalidDomains) {
+        return res.status(400).json({
+          success: false,
+          error: 'Domain validation failed',
+          validationResults
+        });
+      }
+
+      logger.info('All domains validated successfully');
     }
 
     // 在开发环境下，直接创建模拟证书而不调用真实的ACME客户端
@@ -175,10 +212,14 @@ router.post('/create', authMiddleware, async (req, res): Promise<any> => {
         // 即使数据库保存失败，也返回成功响应
       }
 
+      const validationMessage = skipValidation ?
+        ' (domain validation skipped)' :
+        process.env.NODE_ENV !== 'production' ? ' (development mode - validation skipped)' : ' (domains validated)';
+
       res.json({
         success: true,
         data: mockCertificate,
-        message: 'Mock certificate created successfully (development mode)'
+        message: `Mock certificate created successfully${validationMessage}`
       });
     } else {
       // 生产环境使用真实的证书管理器

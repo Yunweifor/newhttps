@@ -138,12 +138,47 @@ newhttps/
 - 实施安全扫描
 - 加强访问控制
 
+## 🆕 新增功能：域名验证系统
+
+### 📊 功能对比分析
+通过分析 httpsok 等成熟平台，我们发现项目在证书申请时缺少域名验证机制，导致申请成功率较低。
+
+### ✅ 新增功能
+1. **完善的域名验证 API**：
+   - 单个域名验证：`POST /api/v1/domain/validate`
+   - 批量域名验证：`POST /api/v1/domain/validate-batch`
+   - DNS 记录查询：`GET /api/v1/domain/dns/:domain`
+   - 连接性测试：`GET /api/v1/domain/connectivity/:domain`
+
+2. **多层验证机制**：
+   - DNS 解析验证（A、AAAA、CNAME、MX、TXT 记录）
+   - HTTP/HTTPS 连接性测试
+   - 域名格式规范检查
+   - 禁止域名过滤
+
+3. **证书申请集成**：
+   - 申请前自动验证域名
+   - 支持跳过验证模式
+   - 详细的验证结果反馈
+
+### 🔧 技术实现
+- 新增 `api/src/routes/domain.ts` - 域名验证路由
+- 扩展 `api/src/services/acmeClient.ts` - 添加验证方法
+- 更新 `api/src/routes/cert.ts` - 集成验证流程
+- 完善 `api/src/index.ts` - 注册新路由
+
+### 📚 文档
+- `DOMAIN_VALIDATION_API.md` - 详细的 API 使用文档
+- 包含与 httpsok 的功能对比
+
 ## 📝 总结
 
-通过本次清理，NewHTTPS 项目现在具有：
+通过本次清理和功能增强，NewHTTPS 项目现在具有：
 - ✅ 清洁的项目结构
 - ✅ 安全的依赖配置
 - ✅ 统一的文档体系
 - ✅ 灵活的部署选项
+- ✅ 完善的域名验证系统
+- ✅ 与 httpsok 相当的功能完整性
 
-项目现在更加整洁、安全和易于维护，为后续的开发和部署提供了良好的基础。
+项目现在更加整洁、安全、功能完善且易于维护，为后续的开发和部署提供了良好的基础。特别是新增的域名验证功能，大大提升了证书申请的成功率和用户体验。

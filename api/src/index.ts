@@ -14,6 +14,7 @@ import { configRoutes } from './routes/config';
 import { deploymentRoutes } from './routes/deployment';
 import { renewalRoutes } from './routes/renewal';
 import { monitoringRoutes } from './routes/monitoring';
+import domainRoutes from './routes/domain';
 import { Database } from './services/database';
 import { RenewalScheduler } from './services/renewalScheduler';
 import { CertificateMonitor } from './services/certificateMonitor';
@@ -53,6 +54,7 @@ app.use('/api/v1/deployment', deploymentRoutes);
 app.use('/api/v1/renewal', renewalRoutes);
 app.use('/api/v1/monitoring', monitoringRoutes);
 app.use('/api/v1/config', authMiddleware, configRoutes);
+app.use('/api/v1/domain', domainRoutes);
 
 // 错误处理
 app.use(errorHandler);
