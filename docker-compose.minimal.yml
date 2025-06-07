@@ -1,0 +1,122 @@
+# NewHTTPS - 最小资源部署配置
+# 适用于资源受限的环境（1GB内存以下的服务器）
+
+version: '3.8'
+
+services:
+  # NewHTTPS API 服务 - 资源限制版
+  newhttps-api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile.optimized
+      target: production
+    image: newhttps-api:minimal
+    container_name: newhttps-api-minimal
+    restart: unless-stopped
+    ports:
+      - "${API_PORT:-3000}:3000"
+    volumes:
+      - newhttps-data:/app/data
+      - newhttps-logs:/app/logs
+      - newhttps-ssl:/app/ssl
+    environment:
+      - NODE_ENV=production
+      - JWT_SECRET=${JWT_SECRET:-newhttps-minimal-secret}
+      - API_PORT=3000
+      - DB_PATH=/app/data/newhttps.db
+      - LOG_LEVEL=warn  # 减少日志输出
+      - LOG_PATH=/app/logs
+      - SSL_CERT_PATH=/app/ssl
+      # 性能优化配置
+      - NODE_OPTIONS=--max-old-space-size=256
+      - UV_THREADPOOL_SIZE=2
+    networks:
+      - newhttps-minimal
+    # 资源限制
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'
+        reservations:
+          memory: 128M
+          cpus: '0.25'
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 60s  # 减少检查频率
+      timeout: 15s
+      retries: 2
+      start_period: 60s
+    labels:
+      - "com.newhttps.service=api"
+      - "com.newhttps.profile=minimal"
+
+  # NewHTTPS Web 界面 - 轻量版
+  newhttps-web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile.optimized
+      target: production
+    image: newhttps-web:minimal
+    container_name: newhttps-web-minimal
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    environment:
+      - NODE_ENV=production
+    networks:
+      - newhttps-minimal
+    # 资源限制
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+          cpus: '0.25'
+        reservations:
+          memory: 32M
+          cpus: '0.1'
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/"]
+      interval: 60s
+      timeout: 10s
+      retries: 2
+      start_period: 30s
+    depends_on:
+      - newhttps-api
+    labels:
+      - "com.newhttps.service=web"
+      - "com.newhttps.profile=minimal"
+
+networks:
+  newhttps-minimal:
+    driver: bridge
+    name: newhttps-minimal
+
+volumes:
+  newhttps-data:
+    name: newhttps-data-minimal
+    driver: local
+  newhttps-logs:
+    name: newhttps-logs-minimal
+    driver: local
+  newhttps-ssl:
+    name: newhttps-ssl-minimal
+    driver: local
+
+# 使用说明:
+# 1. 启动最小化部署:
+#    docker-compose -f docker-compose.minimal.yml up -d
+#
+# 2. 监控资源使用:
+#    docker stats
+#
+# 3. 适用场景:
+#    - VPS (1GB内存)
+#    - 开发测试环境
+#    - 个人项目
+#
+# 4. 性能优化:
+#    - 减少了内存使用
+#    - 降低了CPU占用
+#    - 简化了健康检查
+#    - 减少了日志输出

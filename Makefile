@@ -73,6 +73,19 @@ staging: ## Deploy staging environment
 	@echo "$(BLUE)Deploying staging environment...$(NC)"
 	./scripts/deploy.sh staging --build
 
+# Standalone deployment targets
+standalone: ## Deploy standalone environment
+	@echo "$(BLUE)Deploying standalone environment...$(NC)"
+	./scripts/standalone-deploy.sh install --standard
+
+standalone-minimal: ## Deploy minimal standalone environment
+	@echo "$(BLUE)Deploying minimal standalone environment...$(NC)"
+	./scripts/standalone-deploy.sh install --minimal
+
+standalone-api: ## Deploy API-only standalone environment
+	@echo "$(BLUE)Deploying API-only standalone environment...$(NC)"
+	./scripts/standalone-deploy.sh install --api-only
+
 # Quick deployment targets
 dev-quick: ## Start development environment (no build)
 	@echo "$(BLUE)Starting development environment (quick)...$(NC)"
