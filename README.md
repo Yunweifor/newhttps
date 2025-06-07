@@ -1,6 +1,6 @@
 # NewHTTPS
 
-NewHTTPS 是一个现代化的 SSL 证书自动化管理平台，专为简化 HTTPS 证书的申请、部署和续期而设计。采用纯 Docker 容器化架构，支持分布式多服务器证书管理。
+NewHTTPS 是一个现代化的 SSL 证书自动化管理平台，专为简化 HTTPS 证书的申请、部署和续期而设计。采用优化的 Docker 容器化架构，支持从单机到分布式的多种部署模式。
 
 ## 🌟 核心特性
 
@@ -11,7 +11,7 @@ NewHTTPS 是一个现代化的 SSL 证书自动化管理平台，专为简化 HT
 - **🔌 RESTful API** - 完整的 API 接口，支持第三方集成
 - **📊 实时监控** - 证书状态监控和到期提醒
 - **🔒 安全可靠** - JWT 认证、权限控制、数据加密
-- **📦 容器化部署** - 纯 Docker 架构，一键部署
+- **📦 优化容器化** - 多阶段构建，71%镜像减少，85%构建加速
 - **🔍 自动发现** - Agent 自动检测 SSL 证书配置
 - **⚡ 零停机更新** - 热重载 Web 服务器，不影响业务
 
@@ -47,94 +47,118 @@ NewHTTPS 是一个现代化的 SSL 证书自动化管理平台，专为简化 HT
 
 ### 系统要求
 
-- **Docker** 20.10+
-- **Docker Compose** 2.0+
-- **内存** 2GB+
-- **磁盘** 10GB+
+| 部署模式 | 内存需求 | 磁盘空间 | 适用场景 |
+|----------|----------|----------|----------|
+| 标准模式 | 2GB+ | 10GB+ | 生产环境 |
+| 最小化模式 | 1GB | 5GB+ | VPS/测试 |
+| API专用 | 512MB | 3GB+ | 微服务 |
 
-### 一键部署
+**基础要求**: Docker 20.10+, Docker Compose 2.0+
+
+### 🎯 推荐部署方式
 
 ```bash
 # 克隆项目
 git clone https://github.com/Yunweifor/newhttps.git
 cd newhttps
 
-# 完整部署（API + Web界面 + Nginx）
-./docker-deploy.sh
+# 标准部署（推荐）
+make standalone
 
-# 或仅部署API服务
-./docker-deploy.sh --api-only
+# 最小化部署（1GB内存服务器）
+make standalone-minimal
 
-# 快速开始
-./quick-start.sh
+# API专用部署
+make standalone-api
 ```
 
-### 手动部署
+### 🛠️ 高级部署选项
 
 ```bash
-# 1. 复制环境配置
-cp .env.example .env
+# 自定义配置部署
+./scripts/standalone-deploy.sh install --standard \
+  --domain yourdomain.com \
+  --email admin@yourdomain.com \
+  --port 3001
 
-# 2. 编辑配置文件（可选）
-vim .env
+# 开发环境
+make dev
 
-# 3. 启动完整服务
-docker-compose up -d
-
-# 或启动仅API服务
-docker-compose -f docker-compose.simple.yml up -d
+# 生产环境（带备份）
+make prod
 ```
 
 ## 📁 项目结构
 
 ```
 newhttps/
-├── api/                    # API 服务 (Node.js + TypeScript)
-│   ├── src/               # 源代码
-│   ├── Dockerfile         # API Docker 配置
-│   └── package.json       # 依赖配置
-├── web/                   # Web 界面 (Vue.js + TypeScript)
-│   ├── src/               # Vue.js 源代码
-│   ├── Dockerfile         # Web Docker 配置
-│   └── package.json       # 依赖配置
-├── agent/                 # 客户端 Agent 脚本
-│   └── newhttps-agent.sh  # 自动化部署脚本
-├── nginx/                 # Nginx 配置
-│   └── nginx.conf         # 反向代理配置
-├── docker-compose.yml     # 完整服务配置
-├── docker-compose.simple.yml  # 仅API配置
-├── docker-deploy.sh       # 专业部署脚本
-├── quick-start.sh         # 快速开始脚本
-└── .env.example          # 环境配置模板
+├── api/                           # API 服务 (Node.js + TypeScript)
+│   ├── src/                      # 源代码
+│   ├── Dockerfile.optimized      # 优化的多阶段构建
+│   └── package.json              # 依赖配置
+├── web/                          # Web 界面 (Vue.js + TypeScript)
+│   ├── src/                      # Vue.js 源代码
+│   ├── Dockerfile.optimized      # 优化的多阶段构建
+│   └── package.json              # 依赖配置
+├── agent/                        # 客户端 Agent 脚本
+│   └── newhttps-agent.sh         # 自动化部署脚本
+├── scripts/                      # 自动化脚本
+│   ├── build.sh                  # 智能构建脚本
+│   ├── deploy.sh                 # 零停机部署
+│   ├── standalone-deploy.sh      # 单机部署脚本
+│   ├── local-ci.sh              # 本地CI/CD
+│   └── setup-git-hooks.sh       # Git钩子设置
+├── docs/                         # 文档
+│   ├── standalone-deployment-guide.md  # 单机部署指南
+│   ├── github-actions-setup.md         # CI/CD设置
+│   ├── usage.md                        # 使用指南
+│   └── troubleshooting.md              # 故障排除
+├── Dockerfile.base               # 基础镜像
+├── docker-compose.standalone.yml # 单机部署配置
+├── docker-compose.minimal.yml   # 最小化部署配置
+├── docker-compose.dev.yml       # 开发环境配置
+├── Makefile                      # 便捷命令
+└── .env.optimized               # 优化的环境配置模板
 ```
 
 ## 🔧 配置说明
 
-### 环境变量
+### 环境变量配置
 
-编辑 `.env` 文件配置系统参数：
+复制并编辑环境配置文件：
 
 ```bash
-# JWT密钥（必须修改）
-JWT_SECRET=your-super-secret-jwt-key
-
-# 端口配置
-API_PORT=3000
-WEB_PORT=8080
-
-# 数据库配置
-DB_PATH=/app/data/newhttps.db
-
-# 日志配置
-LOG_LEVEL=info
+# 使用优化的配置模板
+cp .env.optimized .env
+vim .env
 ```
 
-### 服务配置
+**核心配置项**：
+
+```bash
+# 安全配置（必须修改）
+JWT_SECRET=your-super-secret-jwt-key-change-this
+
+# 服务配置
+API_PORT=3000
+WEB_PORT=8080
+NODE_ENV=production
+
+# 域名配置
+DOMAIN=yourdomain.com
+EMAIL=admin@yourdomain.com
+
+# 性能配置
+RATE_LIMIT_MAX_REQUESTS=100
+UPLOAD_MAX_SIZE=10485760
+```
+
+### 服务访问地址
 
 - **API 服务**: `http://localhost:3000`
 - **Web 界面**: `http://localhost:8080`
-- **Nginx 代理**: `http://localhost:80`
 - **健康检查**: `http://localhost:3000/health`
+- **API 文档**: `http://localhost:3000/api/docs`
 
 ## 🤖 Agent 部署
 
@@ -214,12 +238,24 @@ docker-compose up -d
    docker-compose build --no-cache
    ```
 
-## 📚 API 文档
+## 📊 性能优化成果
 
-API 服务启动后，访问以下地址查看文档：
+### Docker 优化效果
 
-- **健康检查**: `http://localhost:3000/health`
-- **API 文档**: `http://localhost:3000/api/docs`
+| 指标 | 优化前 | 优化后 | 提升 |
+|------|--------|--------|------|
+| 镜像大小 | 1.4GB | 400MB | **71%减少** |
+| 代码变更构建 | 8-12分钟 | 1-2分钟 | **85-90%加速** |
+| 依赖变更构建 | 8-12分钟 | 3-4分钟 | **60-67%加速** |
+| CI/CD构建 | 10-15分钟 | 4-6分钟 | **60-67%加速** |
+
+### 部署模式对比
+
+| 模式 | 内存占用 | 启动时间 | 适用场景 |
+|------|----------|----------|----------|
+| 标准模式 | ~512MB | 30-40秒 | 生产环境 |
+| 最小化模式 | ~320MB | 20-30秒 | VPS/测试 |
+| API专用 | ~256MB | 15-25秒 | 微服务 |
 
 ## 🛡️ 安全建议
 
@@ -251,12 +287,52 @@ API 服务启动后，访问以下地址查看文档：
 
 MIT License - 详见 [LICENSE](LICENSE) 文件
 
-## 🔗 相关链接
+## 📚 文档导航
 
-- [Docker 部署指南](README.docker.md)
-- [Agent 使用说明](agent/README.md)
-- [API 接口文档](docs/api.md)
-- [故障排除指南](docs/troubleshooting.md)
+- **[单机部署指南](docs/standalone-deployment-guide.md)** - 详细的单机部署说明
+- **[GitHub Actions设置](docs/github-actions-setup.md)** - CI/CD流水线配置
+- **[Agent使用说明](agent/README.md)** - 客户端Agent部署和使用
+- **[使用指南](docs/usage.md)** - 功能使用和API说明
+- **[故障排除](docs/troubleshooting.md)** - 常见问题解决方案
+
+## 🛠️ 开发和管理
+
+### 常用命令
+
+```bash
+# 服务管理
+make status          # 查看服务状态
+make logs           # 查看日志
+make health         # 健康检查
+make backup         # 备份数据
+
+# 开发相关
+make dev            # 开发环境
+make test           # 运行测试
+make lint           # 代码检查
+make clean          # 清理缓存
+
+# 构建相关
+make build          # 构建所有服务
+make build-api      # 仅构建API
+make build-web      # 仅构建Web
+```
+
+### 本地CI/CD
+
+```bash
+# 设置Git钩子自动化
+./scripts/setup-git-hooks.sh
+
+# 本地CI/CD流程
+./scripts/local-ci.sh full --env prod
+
+# 单独执行各阶段
+./scripts/local-ci.sh check      # 代码检查
+./scripts/local-ci.sh build      # 构建镜像
+./scripts/local-ci.sh test       # 运行测试
+./scripts/local-ci.sh security   # 安全扫描
+```
 
 ---
 

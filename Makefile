@@ -220,6 +220,21 @@ quick-start: setup dev ## Quick start for new users
 	@echo "  Web: http://localhost:8080"
 	@echo "  Health: http://localhost:3000/health"
 
+# Documentation targets
+docs: ## Open documentation
+	@echo "$(BLUE)Opening documentation...$(NC)"
+	@echo "📚 文档导航:"
+	@echo "  主文档: README.md"
+	@echo "  部署指南: DEPLOYMENT.md"
+	@echo "  文档中心: docs/README.md"
+	@echo "  单机部署: docs/standalone-deployment-guide.md"
+	@echo "  CI/CD设置: docs/github-actions-setup.md"
+
+docs-serve: ## Serve documentation locally (requires Python)
+	@echo "$(BLUE)Starting documentation server...$(NC)"
+	@echo "访问 http://localhost:8000 查看文档"
+	@python3 -m http.server 8000 2>/dev/null || python -m SimpleHTTPServer 8000
+
 # Version information
 version: ## Show version information
 	@echo "$(BLUE)Version Information:$(NC)"
