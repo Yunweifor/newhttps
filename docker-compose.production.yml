@@ -1,0 +1,178 @@
+# NewHTTPS 生产环境配置 - 适配服务器IP: 8.134.166.234
+# 网络限制：仅允许外部访问80和443端口，内部端口无限制
+# 无域名环境，通过IP访问
+
+version: '3.8'
+
+services:
+  # NewHTTPS API 服务 - 内部端口
+  newhttps-api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile.optimized
+      target: production
+      args:
+        - BUILD_DATE=${BUILD_DATE:-$(date -u +'%Y-%m-%dT%H:%M:%SZ')}
+        - VERSION=${VERSION:-1.0.0}
+    image: newhttps-api:${VERSION:-latest}
+    container_name: newhttps-api
+    restart: unless-stopped
+    # 不直接暴露端口，通过Nginx代理访问
+    expose:
+      - "3000"
+    volumes:
+      # 数据持久化
+      - newhttps-data:/app/data
+      - newhttps-logs:/app/logs
+      - newhttps-uploads:/app/uploads
+      - newhttps-ssl:/app/ssl
+      - newhttps-backups:/app/backups
+      # 配置文件
+      - ./config:/app/config:ro
+    environment:
+      - NODE_ENV=production
+      - JWT_SECRET=${JWT_SECRET:-please-change-this-jwt-secret-in-production}
+      - API_PORT=3000
+      - API_HOST=0.0.0.0
+      - DB_PATH=/app/data/newhttps.db
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - LOG_PATH=/app/logs
+      - SSL_CERT_PATH=/app/ssl
+      - BACKUP_PATH=/app/backups
+      - UPLOAD_PATH=/app/uploads
+      # 网络配置 - 适配无域名环境
+      - SERVER_IP=8.134.166.234
+      - API_BASE_URL=http://8.134.166.234/api
+      - WEB_BASE_URL=http://8.134.166.234
+      - CORS_ORIGIN=http://8.134.166.234
+      # Agent配置
+      - AGENT_API_ENDPOINT=http://8.134.166.234/api
+      - AGENT_TOKEN_EXPIRES_IN=30d
+      # 安全配置
+      - RATE_LIMIT_WINDOW_MS=900000
+      - RATE_LIMIT_MAX_REQUESTS=100
+      - UPLOAD_MAX_SIZE=10485760
+    networks:
+      - newhttps-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    labels:
+      - "com.newhttps.service=api"
+      - "com.newhttps.version=${VERSION:-1.0.0}"
+      - "com.newhttps.environment=production"
+
+  # NewHTTPS Web 界面 - 内部端口
+  newhttps-web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile.optimized
+      target: production
+      args:
+        - BUILD_DATE=${BUILD_DATE:-$(date -u +'%Y-%m-%dT%H:%M:%SZ')}
+        - VERSION=${VERSION:-1.0.0}
+        # 构建时配置API地址
+        - VITE_API_BASE_URL=http://8.134.166.234/api
+    image: newhttps-web:${VERSION:-latest}
+    container_name: newhttps-web
+    restart: unless-stopped
+    # 不直接暴露端口，通过Nginx代理访问
+    expose:
+      - "80"
+    environment:
+      - NODE_ENV=production
+      - VITE_API_BASE_URL=http://8.134.166.234/api
+    networks:
+      - newhttps-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    depends_on:
+      newhttps-api:
+        condition: service_healthy
+    labels:
+      - "com.newhttps.service=web"
+      - "com.newhttps.version=${VERSION:-1.0.0}"
+      - "com.newhttps.environment=production"
+
+  # Nginx 反向代理 - 统一入口
+  nginx-proxy:
+    image: nginx:alpine
+    container_name: newhttps-nginx
+    restart: unless-stopped
+    ports:
+      # 映射到服务器开放的端口
+      - "80:80"
+      - "443:443"
+    volumes:
+      # 使用生产环境专用的Nginx配置
+      - ./nginx/nginx.production.conf:/etc/nginx/nginx.conf:ro
+      - newhttps-ssl:/etc/nginx/ssl:ro
+      - newhttps-logs:/var/log/nginx
+      # 自签名证书目录（无域名环境）
+      - ./ssl:/etc/nginx/ssl-custom:ro
+    environment:
+      - SERVER_IP=8.134.166.234
+    depends_on:
+      newhttps-api:
+        condition: service_healthy
+      newhttps-web:
+        condition: service_healthy
+    networks:
+      - newhttps-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    labels:
+      - "com.newhttps.service=proxy"
+      - "com.newhttps.version=${VERSION:-1.0.0}"
+      - "com.newhttps.environment=production"
+
+networks:
+  newhttps-network:
+    driver: bridge
+    name: newhttps-production
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  newhttps-data:
+    name: newhttps-data-prod
+    driver: local
+  newhttps-logs:
+    name: newhttps-logs-prod
+    driver: local
+  newhttps-uploads:
+    name: newhttps-uploads-prod
+    driver: local
+  newhttps-ssl:
+    name: newhttps-ssl-prod
+    driver: local
+  newhttps-backups:
+    name: newhttps-backups-prod
+    driver: local
+
+# 使用说明:
+# 1. 部署生产环境:
+#    docker-compose -f docker-compose.production.yml up -d
+#
+# 2. 访问地址:
+#    Web界面: http://8.134.166.234
+#    API接口: http://8.134.166.234/api
+#    健康检查: http://8.134.166.234/health
+#
+# 3. Agent配置:
+#    API_ENDPOINT=http://8.134.166.234/api
+#
+# 4. SSL证书:
+#    支持自签名证书，放置在 ./ssl/ 目录
